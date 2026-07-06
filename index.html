@@ -81,6 +81,20 @@
   }
   h1 { font-size:25px; font-weight:900; letter-spacing:-0.3px; color:#F2EEE3; }
   .subtitle { font-size:12.5px; color: rgba(242,238,227,0.55); margin-top:3px; letter-spacing:0.2px; }
+  .clock-box {
+    text-align:left; flex-shrink:0; padding:7px 12px; border-radius:8px;
+    background: rgba(242,238,227,0.04); border:1px solid rgba(242,238,227,0.1);
+  }
+  .clock-time {
+    font-size:15px; font-weight:800; color:#E4C06E; letter-spacing:0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .clock-date { font-size:10px; color: rgba(242,238,227,0.5); margin-top:2px; white-space:nowrap; }
+  @media (min-width: 640px) {
+    .clock-box { padding:8px 16px; }
+    .clock-time { font-size:17px; }
+    .clock-date { font-size:11px; }
+  }
 
   .tab-row { max-width:1440px; margin:0 auto 20px; display:flex; gap:6px; flex-wrap:wrap;
     border-bottom: 1px solid rgba(242,238,227,0.1); padding-bottom: 0; }
@@ -626,6 +640,24 @@ async function init() {
   loaded = true;
   render();
   setInterval(pollLoad, 4000);
+  startLiveClock();
+}
+
+// ============ Live clock (real device date/time, updates every second) ============
+// Runs independently of render() so it's never disrupted by the dropdown-interaction
+// guard in pollLoad, and never forces a full re-render of the rest of the app.
+function updateClockDisplay() {
+  const timeEl = document.getElementById("clockTime");
+  const dateEl = document.getElementById("clockDate");
+  if (!timeEl || !dateEl) return; // header not in the DOM yet (e.g. loading screen)
+  const now = new Date();
+  timeEl.textContent = now.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+  dateEl.textContent = now.toLocaleDateString("ar-SA-u-ca-gregory", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function startLiveClock() {
+  updateClockDisplay();
+  setInterval(updateClockDisplay, 1000);
 }
 
 // ============ Members actions ============
@@ -706,7 +738,7 @@ function startNewTournament() {
 }
 
 function updateCurrent(patch) {
-  persist({ ...appState, current: { ...appState.current, ...patch } });
+  return persist({ ...appState, current: { ...appState.current, ...patch } });
 }
 
 async function finishTournament(champion, runnerUp, semifinalistsOut, finalStandingsAll) {
@@ -890,13 +922,28 @@ function spinWheel() {
   // re-fetch the wheel element right after render, since render() rebuilt the DOM
   wheelEl.current = document.getElementById("wheelEl");
 
-  animateWheelSpin(n, winnerIdx, () => {
+  animateWheelSpin(n, winnerIdx, async () => {
     const winner = remaining[winnerIdx];
     wheelUi.lastWinner = winner;
+    let newOrder = [...cur.wheelOrder, winner];
+    let newRemaining = remaining.filter((_, i) => i !== winnerIdx);
+
+    // Once the first group reaches its full size, there's no need to keep
+    // spinning for the rest — everyone left over automatically fills group two.
+    const halfSize = Math.ceil(cur.players.length / 2);
+    if (newOrder.length >= halfSize && newRemaining.length > 0) {
+      newOrder = [...newOrder, ...newRemaining];
+      newRemaining = [];
+    }
+
+    // Only clear the "spinning" flag once the new state is actually saved.
+    // Otherwise a background poll landing in this exact window can render
+    // the OLD state (still showing leftover players in the wheel) before
+    // this update is persisted, making the wheel look like it needs to
+    // keep spinning for players who were already auto-assigned.
+    await updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
     wheelUi.spinning = false;
-    const newOrder = [...cur.wheelOrder, winner];
-    const newRemaining = remaining.filter((_, i) => i !== winnerIdx);
-    updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
+    render();
     playLandThud();
   });
 }
@@ -1123,7 +1170,7 @@ function wheelStageHtml() {
   return `<div class="card">
     <div class="tournament-badge">${escapeHtml(cur.name)}</div>
     <h2>القرعة الدوارة</h2>
-    <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين.</p>
+    <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين. بمجرد ما تكتمل المجموعة الأولى، الباقين ينتقلون تلقائياً للمجموعة الثانية بدون الحاجة لإكمال القرعة للجميع.</p>
     <div class="wheel-area">
       <div class="wheel-wrap">
         <div class="pointer">▼</div>
@@ -1329,11 +1376,12 @@ function statsPanelHtml(archive, compact) {
     ${statBlockHtml("الأكثر صعوداً للنهائي",'',stats.mostFinalAppearances,"finalAppearances","مرة")}
     ${statBlockHtml("الأقل صعوداً من مجموعته",'',stats.leastPromotions,"promotions","مرة صعود")}`;
   if (!compact) {
-    html += `<div class="archive-divider"></div><h3 class="group-title">أرشيف البطولات</h3>`;
+    html += `<div class="archive-divider"></div><h3 class="group-title">أرشيف البطولات</h3>
+      <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
     html += archive.slice().reverse().map(t => `
-      <div class="archive-row" style="display:flex; align-items:center; gap:8px;">
+      <div class="archive-row" style="display:flex; align-items:center; gap:10px;">
         <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${escapeHtml(t.champion||"—")} | وصيف: ${escapeHtml(t.runnerUp||"—")}</span>
-        <button class="member-remove-btn" onclick="deleteArchivedTournament('${t.id}')" title="حذف هذه البطولة نهائياً">✕</button>
+        <button class="cta-btn danger" style="width:auto; margin:0; padding:8px 14px; font-size:12px;" onclick="deleteArchivedTournament('${t.id}')">حذف هذه البطولة</button>
       </div>
     `).join("");
   }
@@ -1360,6 +1408,10 @@ function render() {
       <div style="flex:1">
         <h1>دوري أبطال العزبة</h1>
         <p class="subtitle">${headerSubtitle} — بيانات مباشرة لكل المستخدمين</p>
+      </div>
+      <div class="clock-box" id="clockBox">
+        <div class="clock-time" id="clockTime">${new Date().toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}</div>
+        <div class="clock-date" id="clockDate">${new Date().toLocaleDateString("ar-SA-u-ca-gregory", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
       </div>
     </header>
     <div class="tab-row">

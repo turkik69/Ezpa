@@ -596,9 +596,13 @@ async function persist(next) {
   }
 }
 
-function isUserInteractingWithDropdown() {
+function isUserInteractingWithInput() {
   const active = document.activeElement;
-  return !!(active && active.tagName === "SELECT");
+  if (!active) return false;
+  const tag = active.tagName;
+  // block background re-renders while the user has ANY input focused:
+  // dropdowns (score/tiebreak selects) or text fields (member name/club, etc.)
+  return tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA";
 }
 
 async function pollLoad() {
@@ -608,11 +612,13 @@ async function pollLoad() {
     if (pendingWrites > 0) return; // a write started while we were fetching, discard this snapshot
     if (data && !wheelUi.spinning) appState = data;
     members = mem;
-    // Don't tear down and rebuild the DOM while the user has a score
-    // dropdown focused or open — that forces the browser to close it before
-    // they've picked a value. The data above is still updated in memory, so
-    // the next render (e.g. right after they pick a value) will reflect it.
-    if (!isUserInteractingWithDropdown() && !wheelUi.spinning) {
+    // Don't tear down and rebuild the DOM while the user has any field
+    // focused (a text input being typed into, or a score dropdown open) —
+    // that would wipe out what they're typing or force-close the dropdown
+    // before they're done. The data above is still updated in memory, so
+    // the next render (e.g. right after they finish and click away) will
+    // reflect it correctly.
+    if (!isUserInteractingWithInput() && !wheelUi.spinning) {
       render();
     }
     syncBadge.textContent = "متصل ✓ مباشر";

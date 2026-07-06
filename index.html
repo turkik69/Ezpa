@@ -1,0 +1,875 @@
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+
+// ============ Constants ============
+const TOURNAMENT_NAMES = [
+  "بطولة النخبة",
+  "بطولة الصقور",
+  "بطولة الفرسان",
+  "بطولة الأساطير",
+  "بطولة الأبطال",
+  "بطولة الغزاة",
+  "بطولة الأسود",
+  "بطولة الصدارة",
+  "بطولة الرواد",
+  "بطولة القمة",
+];
+
+const STORAGE_KEY = "ezba-league-state-v1";
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function roundRobinPairs(players) {
+  const pairs = [];
+  const list = [...players];
+  if (list.length % 2 !== 0) list.push(null);
+  const n = list.length;
+  const rounds = n - 1;
+  const arr = [...list];
+  for (let r = 0; r < rounds; r++) {
+    for (let i = 0; i < n / 2; i++) {
+      const p1 = arr[i];
+      const p2 = arr[n - 1 - i];
+      if (p1 && p2) pairs.push([p1, p2]);
+    }
+    const fixed = arr[0];
+    const rest = arr.slice(1);
+    rest.unshift(rest.pop());
+    arr.splice(0, arr.length, fixed, ...rest);
+  }
+  return pairs;
+}
+
+function standingsFor(players, matches, tiebreakLog) {
+  const table = {};
+  players.forEach((p) => {
+    table[p.id] = { id: p.id, name: p.name, played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, redCards: 0 };
+  });
+  matches.forEach((m) => {
+    if (m.scoreA == null || m.scoreB == null) return;
+    const a = table[m.a.id];
+    const b = table[m.b.id];
+    if (!a || !b) return;
+    a.played++; b.played++;
+    a.gf += m.scoreA; a.ga += m.scoreB;
+    b.gf += m.scoreB; b.ga += m.scoreA;
+    a.redCards += m.redA || 0;
+    b.redCards += m.redB || 0;
+    if (m.scoreA > m.scoreB) { a.w++; b.l++; a.pts += 3; }
+    else if (m.scoreA < m.scoreB) { b.w++; a.l++; b.pts += 3; }
+    else { a.d++; b.d++; a.pts += 1; b.pts += 1; }
+  });
+  Object.values(table).forEach((t) => (t.gd = t.gf - t.ga));
+
+  const list = Object.values(table);
+
+  const byPts = {};
+  list.forEach((t) => { byPts[t.pts] = byPts[t.pts] || []; byPts[t.pts].push(t); });
+  const ptsKeysDesc = Object.keys(byPts).map(Number).sort((a, b) => b - a);
+
+  const ordered = [];
+  ptsKeysDesc.forEach((pts) => {
+    const cluster = byPts[pts];
+    if (cluster.length === 1) { ordered.push(cluster[0]); return; }
+
+    const byGf = {};
+    cluster.forEach((t) => { byGf[t.gf] = byGf[t.gf] || []; byGf[t.gf].push(t); });
+    const gfKeysDesc = Object.keys(byGf).map(Number).sort((a, b) => b - a);
+
+    gfKeysDesc.forEach((gf) => {
+      const gfCluster = byGf[gf];
+      if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
+
+      const byRed = {};
+      gfCluster.forEach((t) => { byRed[t.redCards] = byRed[t.redCards] || []; byRed[t.redCards].push(t); });
+      const redKeysAsc = Object.keys(byRed).map(Number).sort((a, b) => a - b);
+
+      redKeysAsc.forEach((red) => {
+        const redCluster = byRed[red];
+        if (redCluster.length === 1) { ordered.push(redCluster[0]); return; }
+
+        const shuffled = shuffle(redCluster);
+        if (tiebreakLog && shuffled.length >= 2) {
+          tiebreakLog.push({ id: uid(), names: shuffled.map((s) => s.name), winner: shuffled[0].name, pts, gf, red });
+        }
+        ordered.push(...shuffled);
+      });
+    });
+  });
+
+  return ordered;
+}
+
+const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null });
+
+// ============ Main App ============
+export default function App() {
+  const [appState, setAppState] = useState(emptyState());
+  const [loaded, setLoaded] = useState(false);
+  const [view, setView] = useState("tournament");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await window.storage.get(STORAGE_KEY, true);
+        if (!cancelled && res && res.value) setAppState(JSON.parse(res.value));
+      } catch (e) {
+        // key not created yet
+      }
+      if (!cancelled) setLoaded(true);
+    }
+    load();
+    const interval = setInterval(load, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const persist = useCallback(async (next) => {
+    setAppState(next);
+    try {
+      await window.storage.set(STORAGE_KEY, JSON.stringify(next), true);
+    } catch (e) {
+      console.error("تعذر حفظ البيانات المشتركة", e);
+    }
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div style={styles.page}>
+        <style>{fontImport}</style>
+        <div style={styles.loadingBox}>جارِ تحميل بيانات الدوري المشتركة...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.page}>
+      <style>{fontImport}</style>
+      <div style={styles.floodlightGlow} />
+      <header style={styles.header}>
+        <div style={styles.headerBadge}>⚽</div>
+        <div style={{ flex: 1 }}>
+          <h1 style={styles.title}>دوري أبطال العزبة</h1>
+          <p style={styles.subtitle}>
+            {appState.current ? appState.current.name : "بانتظار بطولة جديدة"} — بيانات مباشرة لكل المستخدمين
+          </p>
+        </div>
+      </header>
+
+      <div style={styles.tabRow}>
+        <button style={{ ...styles.tabBtn, ...(view === "tournament" ? styles.tabBtnActive : {}) }} onClick={() => setView("tournament")}>
+          🏆 البطولة الحالية
+        </button>
+        <button style={{ ...styles.tabBtn, ...(view === "stats" ? styles.tabBtnActive : {}) }} onClick={() => setView("stats")}>
+          📊 التصنيفات التاريخية
+        </button>
+      </div>
+
+      <div style={styles.layout}>
+        <main style={styles.main}>
+          {view === "tournament" ? <TournamentFlow appState={appState} persist={persist} /> : <StatsPanel archive={appState.archive} />}
+        </main>
+        {view === "tournament" && (
+          <aside style={styles.sidebar}>
+            <StatsPanel archive={appState.archive} compact />
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ Tournament Flow ============
+function TournamentFlow({ appState, persist }) {
+  const cur = appState.current;
+
+  const startNewTournament = (players, groupMode) => {
+    const name = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
+    const base = {
+      id: uid(),
+      name,
+      groupMode,
+      stage: groupMode === "two" ? "wheel" : "single",
+      players,
+      wheelOrder: [],
+      remaining: groupMode === "two" ? shuffle(players) : [],
+      groupA: [],
+      groupB: [],
+      matchesA: [],
+      matchesB: [],
+      singleMatches:
+        groupMode === "one"
+          ? roundRobinPairs(shuffle(players)).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 }))
+          : [],
+      semis: null,
+      final: null,
+      tiebreakLog: [],
+    };
+    persist({ ...appState, current: base });
+  };
+
+  const updateCurrent = (patch) => {
+    persist({ ...appState, current: { ...cur, ...patch } });
+  };
+
+  const finishTournament = (champion, runnerUp, semifinalistsOut, finalStandingsAll) => {
+    const archiveEntry = {
+      id: uid(),
+      name: cur.name,
+      champion: champion?.name || null,
+      runnerUp: runnerUp?.name || null,
+      semifinalists: semifinalistsOut.map((p) => p?.name).filter(Boolean),
+      players: finalStandingsAll,
+      promotedNames: cur.promotedNames || [],
+    };
+    persist({
+      tournamentIndex: appState.tournamentIndex + 1,
+      archive: [...appState.archive, archiveEntry],
+      current: null,
+    });
+  };
+
+  if (!cur) {
+    return <RegisterStage upcomingName={TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length]} onStart={startNewTournament} />;
+  }
+  if (cur.stage === "wheel") return <WheelStage cur={cur} updateCurrent={updateCurrent} />;
+  if (cur.stage === "groups") return <GroupsStage cur={cur} updateCurrent={updateCurrent} />;
+  if (cur.stage === "single") return <SingleGroupStage cur={cur} updateCurrent={updateCurrent} finishTournament={finishTournament} />;
+  if (cur.stage === "knockout") return <KnockoutStage cur={cur} updateCurrent={updateCurrent} finishTournament={finishTournament} />;
+  return null;
+}
+
+// ============ Register Stage ============
+function RegisterStage({ upcomingName, onStart }) {
+  const [players, setPlayers] = useState([]);
+  const [nameInput, setNameInput] = useState("");
+  const [groupMode, setGroupMode] = useState("two");
+
+  const addPlayer = () => {
+    const name = nameInput.trim();
+    if (!name) return;
+    setPlayers((p) => [...p, { id: uid(), name }]);
+    setNameInput("");
+  };
+  const removePlayer = (id) => setPlayers((p) => p.filter((x) => x.id !== id));
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.tournamentBadge}>البطولة القادمة: {upcomingName}</div>
+      <h2 style={styles.h2}>📋 تسجيل المشاركين</h2>
+      <p style={styles.hint}>أدخل اسم كل لاعب حاضر هالأسبوع، وبعدها اختر طريقة اللعب.</p>
+
+      <div style={styles.inputRow}>
+        <input
+          style={styles.input}
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addPlayer()}
+          placeholder="اسم اللاعب..."
+        />
+        <button style={styles.primaryBtn} onClick={addPlayer}>+ إضافة</button>
+      </div>
+
+      <div style={styles.playerGrid}>
+        {players.map((p, i) => (
+          <div key={p.id} style={styles.playerChip}>
+            <span style={styles.playerNum}>{i + 1}</span>
+            <span style={{ flex: 1 }}>{p.name}</span>
+            <button style={styles.chipRemove} onClick={() => removePlayer(p.id)}>✕</button>
+          </div>
+        ))}
+        {players.length === 0 && <div style={styles.emptyNote}>لسا ما فيه أسماء مسجلة</div>}
+      </div>
+
+      <div style={styles.countBadge}>عدد المشاركين: {players.length}</div>
+
+      <div style={styles.modeSwitch}>
+        <button style={{ ...styles.modeBtn, ...(groupMode === "two" ? styles.modeBtnActive : {}) }} onClick={() => setGroupMode("two")}>
+          🎡 مجموعتين (قرعة دوارة)
+        </button>
+        <button style={{ ...styles.modeBtn, ...(groupMode === "one" ? styles.modeBtnActive : {}) }} onClick={() => setGroupMode("one")}>
+          🔀 مجموعة واحدة (بدون قرعة)
+        </button>
+      </div>
+
+      <button
+        style={{ ...styles.ctaBtn, opacity: players.length < (groupMode === "two" ? 3 : 2) ? 0.5 : 1 }}
+        disabled={players.length < (groupMode === "two" ? 3 : 2)}
+        onClick={() => onStart(players, groupMode)}
+      >
+        {groupMode === "two" ? "تجهيز القرعة الدوارة →" : "إنشاء جدول المباريات →"}
+      </button>
+    </div>
+  );
+}
+
+// ============ Wheel Stage ============
+function WheelStage({ cur, updateCurrent }) {
+  const [rotation, setRotation] = useState(0);
+  const [spinning, setSpinning] = useState(false);
+  const [lastWinner, setLastWinner] = useState(null);
+
+  const players = cur.players;
+  const remaining = cur.remaining;
+  const wheelOrder = cur.wheelOrder;
+  const halfSize = Math.ceil(players.length / 2);
+  const groupA = wheelOrder.slice(0, halfSize);
+  const groupB = wheelOrder.slice(halfSize);
+  const colors = ["#E8B84B", "#1F5D45", "#C0392B", "#F4F1EA", "#2C7A5B", "#D9A62E"];
+  const n = remaining.length;
+
+  const spin = () => {
+    if (spinning || n === 0) return;
+    setSpinning(true);
+    const winnerIdx = Math.floor(Math.random() * n);
+    const segAngle = 360 / n;
+    const winnerCenter = winnerIdx * segAngle + segAngle / 2;
+    const extraSpins = 6 + Math.floor(Math.random() * 3);
+    const targetRotation = rotation + extraSpins * 360 + (360 - winnerCenter) - (rotation % 360);
+    setRotation(targetRotation);
+
+    setTimeout(() => {
+      const winner = remaining[winnerIdx];
+      setLastWinner(winner);
+      const newOrder = [...wheelOrder, winner];
+      const newRemaining = remaining.filter((_, i) => i !== winnerIdx);
+      updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
+      setSpinning(false);
+    }, 4200);
+  };
+
+  const wheelComplete = remaining.length === 0 && wheelOrder.length === players.length && players.length > 0;
+
+  const proceedToGroups = () => {
+    const gA = wheelOrder.slice(0, halfSize);
+    const gB = wheelOrder.slice(halfSize);
+    updateCurrent({
+      stage: "groups",
+      groupA: gA,
+      groupB: gB,
+      matchesA: roundRobinPairs(gA).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 })),
+      matchesB: roundRobinPairs(gB).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 })),
+    });
+  };
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.tournamentBadge}>{cur.name}</div>
+      <h2 style={styles.h2}>🎡 القرعة الدوارة</h2>
+      <p style={styles.hint}>اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين.</p>
+
+      <div style={styles.wheelArea}>
+        <div style={styles.wheelWrap}>
+          <div style={styles.pointer}>▼</div>
+          <div
+            style={{
+              ...styles.wheel,
+              transform: `rotate(${rotation}deg)`,
+              transition: spinning ? "transform 4.2s cubic-bezier(0.12, 0.67, 0.15, 1)" : "none",
+              background: n > 0 ? conicGradient(n, colors) : "#12321f",
+            }}
+          >
+            {remaining.map((p, i) => {
+              const segAngle = 360 / n;
+              const angle = i * segAngle + segAngle / 2;
+              return (
+                <div key={p.id} style={{ ...styles.wheelLabel, transform: `rotate(${angle}deg) translate(0, -108px) rotate(${-angle}deg)` }}>
+                  {p.name}
+                </div>
+              );
+            })}
+          </div>
+          <div style={styles.wheelHub}>⚽</div>
+        </div>
+
+        <button style={{ ...styles.spinBtn, opacity: spinning || n === 0 ? 0.5 : 1 }} disabled={spinning || n === 0} onClick={spin}>
+          {spinning ? "...تدور" : n === 0 ? "اكتملت القرعة" : "ابدأ الدوران"}
+        </button>
+
+        {lastWinner && !spinning && <div style={styles.winnerBanner}>🎉 {lastWinner.name}</div>}
+      </div>
+
+      <div style={styles.twoColGroups}>
+        <div style={styles.groupBox}>
+          <h3 style={styles.groupTitle}>المجموعة الأولى</h3>
+          {groupA.map((p, i) => (
+            <div key={p.id} style={styles.groupRow}>{i + 1}. {p.name}</div>
+          ))}
+          {groupA.length === 0 && <div style={styles.emptyNote}>—</div>}
+        </div>
+        <div style={styles.groupBox}>
+          <h3 style={styles.groupTitle}>المجموعة الثانية</h3>
+          {groupB.map((p, i) => (
+            <div key={p.id} style={styles.groupRow}>{i + 1}. {p.name}</div>
+          ))}
+          {groupB.length === 0 && <div style={styles.emptyNote}>—</div>}
+        </div>
+      </div>
+
+      {wheelComplete && (
+        <button style={styles.ctaBtn} onClick={proceedToGroups}>الانتقال لجدول المباريات →</button>
+      )}
+    </div>
+  );
+}
+
+function conicGradient(n, colors) {
+  const seg = 360 / n;
+  const stops = [];
+  for (let i = 0; i < n; i++) {
+    const c = colors[i % colors.length];
+    stops.push(`${c} ${i * seg}deg ${(i + 1) * seg}deg`);
+  }
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+// ============ Groups (League) Stage ============
+function GroupsStage({ cur, updateCurrent }) {
+  const tableA = useMemo(() => standingsFor(cur.groupA, cur.matchesA, []), [cur.groupA, cur.matchesA]);
+  const tableB = useMemo(() => standingsFor(cur.groupB, cur.matchesB, []), [cur.groupB, cur.matchesB]);
+
+  const updateMatch = (which, matchId, field, value) => {
+    const list = which === "A" ? cur.matchesA : cur.matchesB;
+    const updated = list.map((m) => (m.id === matchId ? { ...m, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } : m));
+    updateCurrent(which === "A" ? { matchesA: updated } : { matchesB: updated });
+  };
+
+  const allAPlayed = cur.matchesA.length > 0 && cur.matchesA.every((m) => m.scoreA != null && m.scoreB != null);
+  const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every((m) => m.scoreA != null && m.scoreB != null);
+
+  const goToKnockout = () => {
+    const logA = [];
+    const logB = [];
+    const finalTableA = standingsFor(cur.groupA, cur.matchesA, logA);
+    const finalTableB = standingsFor(cur.groupB, cur.matchesB, logB);
+    const a1 = finalTableA[0], a2 = finalTableA[1];
+    const b1 = finalTableB[0], b2 = finalTableB[1];
+    const promotedNames = [a1?.name, a2?.name, b1?.name, b2?.name].filter(Boolean);
+    const eliminatedNames = [...finalTableA.slice(2), ...finalTableB.slice(2)].map((t) => t.name);
+    updateCurrent({
+      stage: "knockout",
+      semis: {
+        m1: { id: uid(), label: "نصف النهائي 1", a: a1, b: b2, scoreA: null, scoreB: null },
+        m2: { id: uid(), label: "نصف النهائي 2", a: b1, b: a2, scoreA: null, scoreB: null },
+      },
+      tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
+      fullStandings: [...finalTableA, ...finalTableB],
+      promotedNames,
+      eliminatedNames,
+    });
+  };
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.tournamentBadge}>{cur.name}</div>
+      <h2 style={styles.h2}>⚔️ دوري المجموعات</h2>
+      <p style={styles.hint}>
+        أدخل نتيجة كل مباراة والبطاقات الحمراء. ترتيب الصعود: نقاط ← أهداف مسجلة ← أقل بطاقات حمراء ← قرعة عشوائية عند التعادل التام.
+      </p>
+
+      <div style={styles.twoColGroups}>
+        <GroupPanel title="المجموعة الأولى" matches={cur.matchesA} updateScore={(id, f, v) => updateMatch("A", id, f, v)} table={tableA} />
+        <GroupPanel title="المجموعة الثانية" matches={cur.matchesB} updateScore={(id, f, v) => updateMatch("B", id, f, v)} table={tableB} />
+      </div>
+
+      <button style={{ ...styles.ctaBtn, opacity: allAPlayed && allBPlayed ? 1 : 0.5 }} disabled={!(allAPlayed && allBPlayed)} onClick={goToKnockout}>
+        الانتقال لنصف النهائي →
+      </button>
+      {!(allAPlayed && allBPlayed) && <div style={styles.emptyNote}>أكمل جميع نتائج المجموعتين للمتابعة</div>}
+    </div>
+  );
+}
+
+function GroupPanel({ title, matches, updateScore, table }) {
+  return (
+    <div style={styles.groupBox}>
+      <h3 style={styles.groupTitle}>{title}</h3>
+      <div style={styles.matchList}>
+        {matches.map((m) => (
+          <div key={m.id} style={styles.matchRow}>
+            <span style={styles.matchName}>{m.a.name}</span>
+            <input type="number" min="0" style={styles.scoreInput} value={m.scoreA ?? ""} onChange={(e) => updateScore(m.id, "scoreA", e.target.value)} />
+            <span style={styles.vs}>-</span>
+            <input type="number" min="0" style={styles.scoreInput} value={m.scoreB ?? ""} onChange={(e) => updateScore(m.id, "scoreB", e.target.value)} />
+            <span style={styles.matchName}>{m.b.name}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.redCardHint}>🟥 بطاقات حمراء (اختياري لكل مباراة)</div>
+      <div style={styles.matchList}>
+        {matches.map((m) => (
+          <div key={m.id + "-red"} style={styles.redRow}>
+            <span style={styles.matchNameSmall}>{m.a.name}</span>
+            <input type="number" min="0" style={styles.redInput} value={m.redA ?? 0} onChange={(e) => updateScore(m.id, "redA", e.target.value)} />
+            <span style={styles.vsSmall}>|</span>
+            <input type="number" min="0" style={styles.redInput} value={m.redB ?? 0} onChange={(e) => updateScore(m.id, "redB", e.target.value)} />
+            <span style={styles.matchNameSmall}>{m.b.name}</span>
+          </div>
+        ))}
+      </div>
+
+      <ScoreTable table={table} />
+    </div>
+  );
+}
+
+function ScoreTable({ table }) {
+  return (
+    <table style={styles.table}>
+      <thead>
+        <tr>
+          <th style={styles.th}>#</th>
+          <th style={styles.th}>اللاعب</th>
+          <th style={styles.th}>لعب</th>
+          <th style={styles.th}>ف</th>
+          <th style={styles.th}>خ</th>
+          <th style={styles.th}>فأ</th>
+          <th style={styles.th}>🟥</th>
+          <th style={styles.th}>نقاط</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table.map((t, i) => (
+          <tr key={t.id} style={i < 2 ? styles.qualifyRow : {}}>
+            <td style={styles.td}>{i + 1}</td>
+            <td style={{ ...styles.td, textAlign: "right" }}>{t.name}</td>
+            <td style={styles.td}>{t.played}</td>
+            <td style={styles.td}>{t.w}</td>
+            <td style={styles.td}>{t.l}</td>
+            <td style={styles.td}>{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
+            <td style={styles.td}>{t.redCards}</td>
+            <td style={{ ...styles.td, fontWeight: 700 }}>{t.pts}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ============ Single Group Stage ============
+function SingleGroupStage({ cur, updateCurrent, finishTournament }) {
+  const table = useMemo(() => standingsFor(cur.players, cur.singleMatches, []), [cur.players, cur.singleMatches]);
+
+  const updateScore = (matchId, field, value) => {
+    const updated = cur.singleMatches.map((m) => (m.id === matchId ? { ...m, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } : m));
+    updateCurrent({ singleMatches: updated });
+  };
+
+  const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every((m) => m.scoreA != null && m.scoreB != null);
+
+  const finish = () => {
+    const finalTable = standingsFor(cur.players, cur.singleMatches, []);
+    const champion = finalTable[0];
+    const runnerUp = finalTable[1];
+    finishTournament(champion, runnerUp, [], finalTable);
+  };
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.tournamentBadge}>{cur.name}</div>
+      <h2 style={styles.h2}>🔀 مجموعة واحدة — الكل ضد الكل</h2>
+      <p style={styles.hint}>جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. أدخل النتائج والبطاقات الحمراء يدوياً.</p>
+      <GroupPanel title={`جدول المباريات (${cur.players.length} مشاركين)`} matches={cur.singleMatches} updateScore={updateScore} table={table} />
+
+      <button style={{ ...styles.ctaBtn, opacity: allPlayed ? 1 : 0.5 }} disabled={!allPlayed} onClick={finish}>
+        إنهاء البطولة وتتويج البطل →
+      </button>
+    </div>
+  );
+}
+
+// ============ Knockout Stage ============
+function KnockoutStage({ cur, updateCurrent, finishTournament }) {
+  const semis = cur.semis;
+
+  const updateSemi = (key, field, value) => {
+    const updated = { ...semis, [key]: { ...semis[key], [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } };
+    updateCurrent({ semis: updated });
+  };
+
+  const semisComplete = semis.m1.scoreA != null && semis.m1.scoreB != null && semis.m2.scoreA != null && semis.m2.scoreB != null;
+
+  const goToFinal = () => {
+    const w1 = semis.m1.scoreA > semis.m1.scoreB ? semis.m1.a : semis.m1.scoreA < semis.m1.scoreB ? semis.m1.b : null;
+    const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
+    if (!w1 || !w2) return;
+    updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
+  };
+
+  const updateFinal = (field, value) => {
+    const updated = { ...cur.final, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) };
+    updateCurrent({ final: updated });
+  };
+
+  const champion =
+    cur.final && cur.final.scoreA != null && cur.final.scoreB != null
+      ? cur.final.scoreA > cur.final.scoreB
+        ? cur.final.a
+        : cur.final.scoreA < cur.final.scoreB
+        ? cur.final.b
+        : null
+      : null;
+
+  const finish = () => {
+    if (!champion) return;
+    const runnerUp = champion.id === cur.final.a.id ? cur.final.b : cur.final.a;
+    const semifinalistsOut = [
+      semis.m1.a?.id === champion.id || semis.m1.a?.id === runnerUp.id ? semis.m1.b : semis.m1.a,
+      semis.m2.a?.id === champion.id || semis.m2.a?.id === runnerUp.id ? semis.m2.b : semis.m2.a,
+    ];
+    finishTournament(champion, runnerUp, semifinalistsOut, cur.fullStandings || []);
+  };
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.tournamentBadge}>{cur.name}</div>
+      <h2 style={styles.h2}>🏆 الأدوار الإقصائية</h2>
+
+      <div style={styles.twoColGroups}>
+        <SemiPanel label="نصف النهائي 1" match={semis.m1} onUpdate={(f, v) => updateSemi("m1", f, v)} />
+        <SemiPanel label="نصف النهائي 2" match={semis.m2} onUpdate={(f, v) => updateSemi("m2", f, v)} />
+      </div>
+
+      {!cur.final && (
+        <button style={{ ...styles.ctaBtn, opacity: semisComplete ? 1 : 0.5 }} disabled={!semisComplete} onClick={goToFinal}>
+          الانتقال للنهائي →
+        </button>
+      )}
+
+      {cur.final && (
+        <div style={styles.finalBox}>
+          <h3 style={styles.groupTitle}>🏁 النهائي الكبير</h3>
+          <div style={styles.matchRow}>
+            <span style={styles.matchName}>{cur.final.a.name}</span>
+            <input type="number" min="0" style={styles.scoreInput} value={cur.final.scoreA ?? ""} onChange={(e) => updateFinal("scoreA", e.target.value)} />
+            <span style={styles.vs}>-</span>
+            <input type="number" min="0" style={styles.scoreInput} value={cur.final.scoreB ?? ""} onChange={(e) => updateFinal("scoreB", e.target.value)} />
+            <span style={styles.matchName}>{cur.final.b.name}</span>
+          </div>
+          {champion && (
+            <>
+              <div style={styles.championBanner}>👑 بطل {cur.name}: {champion.name}</div>
+              <button style={styles.ctaBtn} onClick={finish}>حفظ النتيجة النهائية وأرشفة البطولة →</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SemiPanel({ label, match, onUpdate }) {
+  return (
+    <div style={styles.groupBox}>
+      <h3 style={styles.groupTitle}>{label}</h3>
+      <div style={styles.matchRow}>
+        <span style={styles.matchName}>{match.a?.name ?? "—"}</span>
+        <input type="number" min="0" style={styles.scoreInput} value={match.scoreA ?? ""} onChange={(e) => onUpdate("scoreA", e.target.value)} />
+        <span style={styles.vs}>-</span>
+        <input type="number" min="0" style={styles.scoreInput} value={match.scoreB ?? ""} onChange={(e) => onUpdate("scoreB", e.target.value)} />
+        <span style={styles.matchName}>{match.b?.name ?? "—"}</span>
+      </div>
+      {match.scoreA != null && match.scoreB != null && match.scoreA === match.scoreB && (
+        <div style={styles.warnNote}>⚠️ تعادل — الأدوار الإقصائية لازم يكون فيها فائز، عدّل النتيجة</div>
+      )}
+    </div>
+  );
+}
+
+// ============ Historical Stats Panel ============
+function computeHistoricalStats(archive) {
+  const perPlayer = {};
+
+  const ensure = (name) => {
+    if (!perPlayer[name]) {
+      perPlayer[name] = {
+        name,
+        titles: 0,
+        goalsScored: 0,
+        goalsConceded: 0,
+        promotions: 0,
+        runnerUps: 0,
+        finalAppearances: 0,
+        appearances: 0,
+      };
+    }
+    return perPlayer[name];
+  };
+
+  archive.forEach((t) => {
+    if (t.champion) {
+      ensure(t.champion).titles += 1;
+      ensure(t.champion).finalAppearances += 1;
+    }
+    if (t.runnerUp) {
+      ensure(t.runnerUp).runnerUps += 1;
+      ensure(t.runnerUp).finalAppearances += 1;
+    }
+    (t.players || []).forEach((p) => {
+      const s = ensure(p.name);
+      s.goalsScored += p.gf || 0;
+      s.goalsConceded += p.ga || 0;
+      s.appearances += 1;
+    });
+    (t.promotedNames || []).forEach((name) => (ensure(name).promotions += 1));
+  });
+
+  const list = Object.values(perPlayer);
+  const topBy = (key, count = 5) => [...list].sort((a, b) => b[key] - a[key]).filter((x) => x[key] > 0).slice(0, count);
+
+  const leastPromotions = [...list]
+    .filter((x) => x.appearances >= 2)
+    .sort((a, b) => a.promotions - b.promotions || b.appearances - a.appearances)
+    .slice(0, 5);
+
+  return {
+    mostTitles: topBy("titles"),
+    mostGoalsScored: topBy("goalsScored"),
+    mostGoalsConceded: topBy("goalsConceded"),
+    mostRunnerUps: topBy("runnerUps"),
+    mostFinalAppearances: topBy("finalAppearances"),
+    leastPromotions,
+    list,
+  };
+}
+
+function StatsPanel({ archive, compact }) {
+  const stats = useMemo(() => computeHistoricalStats(archive || []), [archive]);
+
+  if (!archive || archive.length === 0) {
+    return (
+      <div style={compact ? styles.sidebarCard : styles.card}>
+        <h3 style={styles.groupTitle}>📊 التصنيفات التاريخية</h3>
+        <div style={styles.emptyNote}>ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً.</div>
+      </div>
+    );
+  }
+
+  const StatBlock = ({ title, icon, rows, valueKey, suffix }) => (
+    <div style={styles.statBlock}>
+      <div style={styles.statBlockTitle}>{icon} {title}</div>
+      {rows.length === 0 ? (
+        <div style={styles.emptyNoteSmall}>لا توجد بيانات بعد</div>
+      ) : (
+        rows.map((r, i) => (
+          <div key={r.name} style={styles.statRow}>
+            <span style={styles.statRank}>{i + 1}</span>
+            <span style={{ flex: 1 }}>{r.name}</span>
+            <span style={styles.statValue}>{r[valueKey]} {suffix}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <div style={compact ? styles.sidebarCard : styles.card}>
+      <h3 style={styles.groupTitle}>📊 التصنيفات التاريخية ({archive.length} بطولة مكتملة)</h3>
+      <StatBlock title="الأكثر تتويجاً" icon="👑" rows={stats.mostTitles} valueKey="titles" suffix="لقب" />
+      <StatBlock title="الأكثر تسجيلاً للأهداف" icon="⚽" rows={stats.mostGoalsScored} valueKey="goalsScored" suffix="هدف" />
+      <StatBlock title="الأكثر تلقياً للأهداف" icon="🥅" rows={stats.mostGoalsConceded} valueKey="goalsConceded" suffix="هدف" />
+      <StatBlock title="الأكثر وصافة" icon="🥈" rows={stats.mostRunnerUps} valueKey="runnerUps" suffix="مرة" />
+      <StatBlock title="الأكثر صعوداً للنهائي" icon="🏁" rows={stats.mostFinalAppearances} valueKey="finalAppearances" suffix="مرة" />
+      <StatBlock title="الأقل صعوداً من مجموعته" icon="📉" rows={stats.leastPromotions} valueKey="promotions" suffix="مرة صعود" />
+
+      {!compact && (
+        <>
+          <div style={styles.archiveDivider} />
+          <h3 style={styles.groupTitle}>🗂️ أرشيف البطولات</h3>
+          {archive.slice().reverse().map((t) => (
+            <div key={t.id} style={styles.archiveRow}>
+              <strong>{t.name}</strong> — 👑 {t.champion || "—"} | 🥈 {t.runnerUp || "—"}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============ Fonts & Styles ============
+const fontImport = `
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+* { box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
+input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+`;
+
+const styles = {
+  page: { direction: "rtl", minHeight: "100vh", background: "linear-gradient(180deg, #0C2E22 0%, #0F3D2E 55%, #0C2E22 100%)", color: "#F4F1EA", padding: "24px 16px 80px", position: "relative", overflow: "hidden" },
+  loadingBox: { textAlign: "center", padding: 60, color: "rgba(244,241,234,0.6)" },
+  floodlightGlow: { position: "absolute", top: -120, left: "50%", transform: "translateX(-50%)", width: 500, height: 500, background: "radial-gradient(circle, rgba(232,184,75,0.18) 0%, rgba(232,184,75,0) 70%)", pointerEvents: "none" },
+  header: { display: "flex", alignItems: "center", gap: 14, maxWidth: 1040, margin: "0 auto 16px", position: "relative" },
+  headerBadge: { width: 52, height: 52, borderRadius: "50%", background: "#E8B84B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: "0 0 0 3px rgba(232,184,75,0.25)" },
+  title: { margin: 0, fontSize: 26, fontWeight: 900, letterSpacing: "-0.5px" },
+  subtitle: { margin: "2px 0 0", fontSize: 13, color: "rgba(244,241,234,0.6)" },
+  tabRow: { maxWidth: 1040, margin: "0 auto 20px", display: "flex", gap: 8 },
+  tabBtn: { padding: "10px 18px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "rgba(244,241,234,0.7)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" },
+  tabBtnActive: { background: "rgba(232,184,75,0.18)", borderColor: "#E8B84B", color: "#E8B84B" },
+  layout: { maxWidth: 1040, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" },
+  main: { minWidth: 0 },
+  sidebar: { position: "sticky", top: 16 },
+  card: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, padding: "22px 20px", backdropFilter: "blur(6px)" },
+  sidebarCard: { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "16px", fontSize: 13, maxHeight: "calc(100vh - 140px)", overflowY: "auto" },
+  tournamentBadge: { display: "inline-block", background: "linear-gradient(135deg, rgba(232,184,75,0.25), rgba(232,184,75,0.1))", color: "#E8B84B", fontWeight: 900, fontSize: 13.5, borderRadius: 999, padding: "6px 16px", marginBottom: 14, border: "1px solid rgba(232,184,75,0.35)" },
+  h2: { margin: "0 0 6px", fontSize: 19, fontWeight: 800 },
+  hint: { margin: "0 0 18px", fontSize: 13.5, color: "rgba(244,241,234,0.65)", lineHeight: 1.6 },
+  inputRow: { display: "flex", gap: 8, marginBottom: 16 },
+  input: { flex: 1, padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "#F4F1EA", fontSize: 14.5, outline: "none" },
+  primaryBtn: { padding: "12px 18px", borderRadius: 12, border: "none", background: "#E8B84B", color: "#0F3D2E", fontWeight: 800, fontSize: 14, cursor: "pointer" },
+  playerGrid: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, maxHeight: 280, overflowY: "auto" },
+  playerChip: { display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "9px 12px", fontSize: 14 },
+  playerNum: { background: "#1F5D45", color: "#F4F1EA", borderRadius: "50%", width: 22, height: 22, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  chipRemove: { background: "none", border: "none", color: "#C0392B", fontSize: 15, cursor: "pointer", padding: "2px 6px" },
+  emptyNote: { fontSize: 13, color: "rgba(244,241,234,0.45)", padding: "8px 0", textAlign: "center" },
+  emptyNoteSmall: { fontSize: 11.5, color: "rgba(244,241,234,0.4)", padding: "4px 0" },
+  countBadge: { display: "inline-block", background: "rgba(232,184,75,0.15)", color: "#E8B84B", fontWeight: 700, fontSize: 13, borderRadius: 999, padding: "5px 14px", marginBottom: 18 },
+  modeSwitch: { display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" },
+  modeBtn: { flex: "1 1 160px", padding: "12px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.04)", color: "rgba(244,241,234,0.7)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" },
+  modeBtnActive: { background: "rgba(232,184,75,0.18)", borderColor: "#E8B84B", color: "#E8B84B" },
+  ctaBtn: { width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #E8B84B, #D9A62E)", color: "#0F3D2E", fontWeight: 900, fontSize: 15, cursor: "pointer", marginTop: 10 },
+  wheelArea: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, marginBottom: 20 },
+  wheelWrap: { position: "relative", width: 240, height: 240, display: "flex", alignItems: "center", justifyContent: "center" },
+  pointer: { position: "absolute", top: -14, fontSize: 26, color: "#C0392B", zIndex: 3, filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.4))" },
+  wheel: { width: 220, height: 220, borderRadius: "50%", position: "relative", border: "5px solid #F4F1EA", boxShadow: "0 0 0 3px #0F3D2E, 0 10px 30px rgba(0,0,0,0.4)" },
+  wheelLabel: { position: "absolute", top: "50%", left: "50%", transformOrigin: "0 0", fontSize: 10.5, fontWeight: 800, color: "#0F3D2E", width: 90, textAlign: "center", marginLeft: -45, marginTop: -6 },
+  wheelHub: { position: "absolute", width: 44, height: 44, borderRadius: "50%", background: "#0F3D2E", border: "3px solid #F4F1EA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, zIndex: 2 },
+  spinBtn: { padding: "13px 32px", borderRadius: 999, border: "none", background: "#E8B84B", color: "#0F3D2E", fontWeight: 900, fontSize: 15, cursor: "pointer" },
+  winnerBanner: { background: "rgba(232,184,75,0.15)", color: "#E8B84B", fontWeight: 800, fontSize: 16, padding: "8px 20px", borderRadius: 12 },
+  twoColGroups: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 },
+  groupBox: { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "14px" },
+  groupTitle: { margin: "0 0 10px", fontSize: 14.5, fontWeight: 800, color: "#E8B84B" },
+  groupRow: { fontSize: 13.5, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" },
+  matchList: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 },
+  matchRow: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px" },
+  matchName: { flex: 1, textAlign: "center", fontWeight: 600 },
+  matchNameSmall: { flex: 1, textAlign: "center", fontSize: 11, color: "rgba(244,241,234,0.6)" },
+  scoreInput: { width: 38, padding: "5px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", color: "#F4F1EA", textAlign: "center", fontSize: 13 },
+  redInput: { width: 32, padding: "4px", borderRadius: 6, border: "1px solid rgba(192,57,43,0.4)", background: "rgba(192,57,43,0.1)", color: "#F4F1EA", textAlign: "center", fontSize: 12 },
+  redCardHint: { fontSize: 11, color: "rgba(244,241,234,0.45)", margin: "4px 0" },
+  redRow: { display: "flex", alignItems: "center", gap: 6, background: "rgba(192,57,43,0.06)", borderRadius: 8, padding: "6px 8px" },
+  vs: { fontWeight: 700, color: "rgba(244,241,234,0.5)" },
+  vsSmall: { fontWeight: 700, color: "rgba(244,241,234,0.3)", fontSize: 11 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 },
+  th: { padding: "6px 3px", color: "rgba(244,241,234,0.5)", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.1)" },
+  td: { padding: "6px 3px", textAlign: "center", borderBottom: "1px solid rgba(255,255,255,0.06)" },
+  qualifyRow: { background: "rgba(232,184,75,0.1)" },
+  finalBox: { background: "rgba(232,184,75,0.08)", border: "1px solid rgba(232,184,75,0.3)", borderRadius: 14, padding: 16 },
+  championBanner: { marginTop: 14, textAlign: "center", fontSize: 18, fontWeight: 900, color: "#E8B84B", padding: "12px", background: "rgba(232,184,75,0.12)", borderRadius: 12, marginBottom: 12 },
+  warnNote: { fontSize: 12, color: "#C0392B", marginTop: 6, textAlign: "center" },
+  statBlock: { marginBottom: 16 },
+  statBlockTitle: { fontSize: 13, fontWeight: 800, color: "#E8B84B", marginBottom: 6 },
+  statRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" },
+  statRank: { background: "rgba(255,255,255,0.08)", borderRadius: "50%", width: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  statValue: { fontWeight: 800, color: "#E8B84B" },
+  archiveDivider: { height: 1, background: "rgba(255,255,255,0.1)", margin: "18px 0" },
+  archiveRow: { fontSize: 12.5, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" },
+};

@@ -247,21 +247,7 @@
   .score-select:focus { border-color:#C9A24B; outline:none; }
   .score-select option { background:#12274A; color:#F2EEE3; }
 
-  .red-select {
-    appearance:none; -webkit-appearance:none; -moz-appearance:none;
-    width:40px; padding:5px 4px; border-radius:6px; border:1px solid rgba(184,51,43,0.35);
-    background: rgba(184,51,43,0.08) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23F2EEE3' fill-opacity='0.5'/%3E%3C/svg%3E") no-repeat left 5px center;
-    color:#F2EEE3; text-align:center; font-size:12.5px; cursor:pointer; text-align-last: center;
-  }
-  .red-select option { background:#12274A; color:#F2EEE3; }
-
-  .red-card-hint { font-size:11px; color: rgba(242,238,227,0.4); margin:6px 0; }
-  .red-row {
-    display:flex; align-items:center; gap:8px; background: rgba(184,51,43,0.05);
-    border-radius:8px; padding:8px 12px; border:1px solid rgba(184,51,43,0.12);
-  }
   .vs { font-weight:800; color: rgba(242,238,227,0.4); font-size:12px; }
-  .vs-sm { font-weight:800; color: rgba(242,238,227,0.3); font-size:11px; }
 
   table.score-table { width:100%; border-collapse:collapse; font-size:11.5px; }
   table.score-table th {
@@ -500,7 +486,7 @@ function roundRobinPairs(players) {
 function standingsFor(players, matches, tiebreakLog) {
   const table = {};
   players.forEach((p) => {
-    table[p.id] = { id:p.id, name:p.name, played:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, pts:0, redCards:0 };
+    table[p.id] = { id:p.id, name:p.name, played:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, pts:0 };
   });
   matches.forEach((m) => {
     if (m.scoreA == null || m.scoreB == null) return;
@@ -509,7 +495,6 @@ function standingsFor(players, matches, tiebreakLog) {
     a.played++; b.played++;
     a.gf += m.scoreA; a.ga += m.scoreB;
     b.gf += m.scoreB; b.ga += m.scoreA;
-    a.redCards += m.redA || 0; b.redCards += m.redB || 0;
     if (m.scoreA > m.scoreB) { a.w++; b.l++; a.pts += 3; }
     else if (m.scoreA < m.scoreB) { b.w++; a.l++; b.pts += 3; }
     else { a.d++; b.d++; a.pts += 1; b.pts += 1; }
@@ -531,18 +516,12 @@ function standingsFor(players, matches, tiebreakLog) {
     gfKeysDesc.forEach((gf) => {
       const gfCluster = byGf[gf];
       if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
-      const byRed = {};
-      gfCluster.forEach((t) => { byRed[t.redCards] = byRed[t.redCards] || []; byRed[t.redCards].push(t); });
-      const redKeysAsc = Object.keys(byRed).map(Number).sort((a,b) => a-b);
-      redKeysAsc.forEach((red) => {
-        const redCluster = byRed[red];
-        if (redCluster.length === 1) { ordered.push(redCluster[0]); return; }
-        const shuffled = shuffle(redCluster);
-        if (tiebreakLog && shuffled.length >= 2) {
-          tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf, red });
-        }
-        ordered.push(...shuffled);
-      });
+      // still tied on points and goals scored -> random draw, resolved pairwise & logged
+      const shuffled = shuffle(gfCluster);
+      if (tiebreakLog && shuffled.length >= 2) {
+        tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf });
+      }
+      ordered.push(...shuffled);
     });
   });
   return ordered;
@@ -573,15 +552,6 @@ function scoreSelectHtml(value, onchangeAttr) {
     <option value="" ${placeholderSelected}>-</option>
     ${opts}
   </select>`;
-}
-
-// builds a <select> for a 0-5 red card dropdown
-function redSelectHtml(value, onchangeAttr) {
-  let opts = "";
-  for (let i = 0; i <= 5; i++) {
-    opts += `<option value="${i}" ${value === i ? "selected" : ""}>${i}</option>`;
-  }
-  return `<select class="red-select" ${onchangeAttr}>${opts}</select>`;
 }
 
 // ============ App State ============
@@ -638,7 +608,7 @@ async function pollLoad() {
     if (pendingWrites > 0) return; // a write started while we were fetching, discard this snapshot
     if (data && !wheelUi.spinning) appState = data;
     members = mem;
-    // Don't tear down and rebuild the DOM while the user has a score/red-card
+    // Don't tear down and rebuild the DOM while the user has a score
     // dropdown focused or open — that forces the browser to close it before
     // they've picked a value. The data above is still updated in memory, so
     // the next render (e.g. right after they pick a value) will reflect it.
@@ -686,7 +656,7 @@ window.addMember = async function() {
   const club = (clubInput.value || "").trim();
   if (!name || !club) return;
   const isGuest = !!guestInput.checked;
-  const newMember = { id: uid(), name, club, is_guest: isGuest, confirmed: false };
+  const newMember = { id: uid(), name, club, is_guest: isGuest, confirmed: false, is_core: false };
   members.push(newMember);
   render();
   pendingWrites++;
@@ -718,6 +688,11 @@ window.toggleConfirm = async function(id) {
 };
 
 window.removeMember = async function(id) {
+  const m = members.find(x => x.id === id);
+  if (m && m.is_core) {
+    alert("هذا عضو أساسي بقائمة الفريق ولا يمكن حذفه. تقدر تحذف فقط الأعضاء والضيوف اللي تضيفهم بنفسك.");
+    return;
+  }
   members = members.filter(m => m.id !== id);
   render();
   pendingWrites++;
@@ -780,7 +755,7 @@ function startNewTournament() {
     groupA: [], groupB: [],
     matchesA: [], matchesB: [],
     singleMatches: groupMode === "one"
-      ? roundRobinPairs(shuffle(allPlayers)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 }))
+      ? roundRobinPairs(shuffle(allPlayers)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null }))
       : [],
     semis: null, final: null, tiebreakLog: [],
   };
@@ -1004,8 +979,8 @@ function proceedToGroups() {
   const gB = cur.wheelOrder.slice(halfSize);
   updateCurrent({
     stage: "groups", groupA: gA, groupB: gB,
-    matchesA: roundRobinPairs(gA).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 })),
-    matchesB: roundRobinPairs(gB).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 })),
+    matchesA: roundRobinPairs(gA).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null })),
+    matchesB: roundRobinPairs(gB).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null })),
   });
 }
 
@@ -1126,12 +1101,12 @@ function membersStageHtml() {
       <button class="confirm-btn ${m.confirmed ? 'confirmed-btn' : ''}" onclick="toggleConfirm('${m.id}')">
         ${m.confirmed ? '✓ مؤكد' : 'تأكيد الحضور'}
       </button>
-      <button class="member-remove-btn" onclick="removeMember('${m.id}')" title="حذف العضو">✕</button>
+      ${m.is_core ? "" : `<button class="member-remove-btn" onclick="removeMember('${m.id}')" title="حذف العضو">✕</button>`}
     </div>`;
 
   return `<div class="card">
     <h2>قائمة الأعضاء والأندية</h2>
-    <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه)، وينتقل اسمك لقائمة المؤكدين. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت.</p>
+    <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه)، وينتقل اسمك لقائمة المؤكدين. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
 
     <div class="add-member-box">
       <div class="add-member-label">+ إضافة عضو أو ضيف جديد</div>
@@ -1153,7 +1128,7 @@ function membersStageHtml() {
     ${unconfirmed.length === 0 ? `<div class="empty-note">الكل أكّد حضوره 🎉</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
 
     <div class="archive-divider"></div>
-    <p class="hint" style="margin-bottom:10px;">لما تخلصون كل بطولات اليوم (مهما كان عددها)، اضغطي الزر تحت عشان تصفّرين التأكيدات استعداداً ليوم لعب جديد.</p>
+    <p class="hint" style="margin-bottom:10px;">لما تخلصون كل بطولات اليوم (مهما كان عددها)، اضغط الزر تحت عشان تصفّر التأكيدات استعداداً ليوم لعب جديد.</p>
     <button class="cta-btn danger" onclick="endPlayDay()">إنهاء يوم اللعب وتصفير التأكيدات</button>
   </div>`;
 }
@@ -1274,11 +1249,10 @@ function scoreTableHtml(table) {
       <td>${t.w}</td>
       <td>${t.l}</td>
       <td>${t.gd>0?'+'+t.gd:t.gd}</td>
-      <td>${t.redCards}</td>
       <td style="font-weight:700">${t.pts}</td>
     </tr>`).join("");
   return `<table class="score-table">
-    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>خ</th><th>فأ</th><th>بطاقات</th><th>نقاط</th></tr></thead>
+    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>خ</th><th>فأ</th><th>نقاط</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -1293,20 +1267,9 @@ function groupPanelHtml(title, matches, whichKey, table) {
       <span class="match-name">${escapeHtml(m.b.name)}</span>
     </div>`).join("");
 
-  const redRows = matches.map(m => `
-    <div class="red-row">
-      <span class="match-name-sm">${escapeHtml(m.a.name)}</span>
-      ${redSelectHtml(m.redA ?? 0, `onchange="updateMatchField('${whichKey}','${m.id}','redA',this.value)"`)}
-      <span class="vs-sm">|</span>
-      ${redSelectHtml(m.redB ?? 0, `onchange="updateMatchField('${whichKey}','${m.id}','redB',this.value)"`)}
-      <span class="match-name-sm">${escapeHtml(m.b.name)}</span>
-    </div>`).join("");
-
   return `<div class="group-box">
     <h3 class="group-title">${title}</h3>
     <div class="match-list">${matchRows}</div>
-    <div class="red-card-hint">بطاقات حمراء (اختياري لكل مباراة)</div>
-    <div class="match-list">${redRows}</div>
     ${scoreTableHtml(table)}
   </div>`;
 }
@@ -1321,7 +1284,7 @@ function groupsStageHtml() {
   return `<div class="card">
     <div class="tournament-badge">${escapeHtml(cur.name)}</div>
     <h2>دوري المجموعات</h2>
-    <p class="hint">اختر نتيجة كل مباراة والبطاقات الحمراء من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← أقل بطاقات حمراء ← قرعة عشوائية عند التعادل التام.</p>
+    <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
     <div class="two-col">
       ${groupPanelHtml("المجموعة الأولى", cur.matchesA, "A", tableA)}
       ${groupPanelHtml("المجموعة الثانية", cur.matchesB, "B", tableB)}
@@ -1338,7 +1301,7 @@ function singleGroupStageHtml() {
   return `<div class="card">
     <div class="tournament-badge">${escapeHtml(cur.name)}</div>
     <h2>مجموعة واحدة — الكل ضد الكل</h2>
-    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. اختر النتائج والبطاقات الحمراء من القوائم.</p>
+    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. اختر النتائج من القوائم.</p>
     ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table)}
     <button class="cta-btn" ${!allPlayed ? "disabled" : ""} onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button>
   </div>`;

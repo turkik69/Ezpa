@@ -460,6 +460,23 @@ function shuffle(arr) {
   return a;
 }
 
+// Once group one (the first `halfSize` seats in wheelOrder) is full, there's
+// no reason to keep spinning for the rest: the seeded runner-up (if any)
+// takes the first seat of group two, and everyone still in the wheel's pool
+// is appended after them, completing the draw in one shot.
+function foldRemainingIntoGroupTwo(wheelOrder, remaining, seededRunnerUp, halfSize) {
+  if (wheelOrder.length < halfSize) {
+    return { wheelOrder, remaining, seededRunnerUp }; // group one isn't full yet, nothing to do
+  }
+  if (!seededRunnerUp && remaining.length === 0) {
+    return { wheelOrder, remaining, seededRunnerUp }; // already fully resolved
+  }
+  const filled = seededRunnerUp
+    ? [...wheelOrder, seededRunnerUp, ...remaining]
+    : [...wheelOrder, ...remaining];
+  return { wheelOrder: filled, remaining: [], seededRunnerUp: null };
+}
+
 function roundRobinPairs(players) {
   const pairs = [];
   const list = [...players];
@@ -568,7 +585,7 @@ function redSelectHtml(value, onchangeAttr) {
 }
 
 // ============ App State ============
-const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null });
+const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
 let appState = emptyState();
 let members = []; // [{id, name, club, is_guest, confirmed}]
 let loaded = false;
@@ -717,19 +734,53 @@ window.removeMember = async function(id) {
 // ============ Tournament actions ============
 function startNewTournament() {
   const confirmedMembers = members.filter(m => m.confirmed);
-  const players = confirmedMembers.map(m => ({ id: m.id, name: m.name, club: m.club }));
+  const allPlayers = confirmedMembers.map(m => ({ id: m.id, name: m.name, club: m.club }));
   const groupMode = window.__selectedGroupMode || "two";
   const name = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
+  const useSeeding = groupMode === "two" && window.__useSeeding !== false;
+
+  // If the last champion/runner-up confirmed their attendance and seeding is
+  // enabled, place them directly: champion -> group one, runner-up -> group
+  // two. Neither enters the spinning wheel; only everyone else does.
+  let seededChampion = null;
+  let seededRunnerUp = null;
+  if (useSeeding && appState.lastChampion) {
+    seededChampion = allPlayers.find(p => p.id === appState.lastChampion.id) || null;
+  }
+  if (useSeeding && appState.lastRunnerUp) {
+    seededRunnerUp = allPlayers.find(p => p.id === appState.lastRunnerUp.id) || null;
+  }
+
+  const wheelPool = allPlayers.filter(p =>
+    p.id !== seededChampion?.id && p.id !== seededRunnerUp?.id
+  );
+  const halfSize = Math.ceil(allPlayers.length / 2);
+
+  const initialWheelOrder = seededChampion ? [seededChampion] : [];
+  const initialRemaining = groupMode === "two" ? shuffle(wheelPool) : [];
+
+  // Handle the edge case where group one is already "full" the moment the
+  // tournament is created (e.g. only the champion + runner-up confirmed, or
+  // halfSize is 1) — fold the runner-up / pool in immediately rather than
+  // waiting for a spin that would never meaningfully happen.
+  const folded = groupMode === "two"
+    ? foldRemainingIntoGroupTwo(initialWheelOrder, initialRemaining, seededRunnerUp, halfSize)
+    : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
+
   const base = {
     id: uid(), name, groupMode,
     stage: groupMode === "two" ? "wheel" : "single",
-    players,
-    wheelOrder: [],
-    remaining: groupMode === "two" ? shuffle(players) : [],
+    players: allPlayers,
+    // wheelOrder starts with the seeded champion already occupying the first
+    // group-one seat (if any); seededRunnerUp is held separately and only
+    // appended once group one fills up, so it lands in group two.
+    wheelOrder: folded.wheelOrder,
+    seededRunnerUp: folded.seededRunnerUp,
+    remaining: folded.remaining,
     groupA: [], groupB: [],
     matchesA: [], matchesB: [],
     singleMatches: groupMode === "one"
-      ? roundRobinPairs(shuffle(players)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 }))
+      ? roundRobinPairs(shuffle(allPlayers)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 }))
       : [],
     semis: null, final: null, tiebreakLog: [],
   };
@@ -758,6 +809,10 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
     tournamentIndex: appState.tournamentIndex + 1,
     archive: [...appState.archive, archiveEntry],
     current: null,
+    // Remember who won/came second so the NEXT tournament can offer to seed
+    // them directly into group one / group two instead of the wheel draw.
+    lastChampion: champion ? { id: champion.id, name: champion.name } : null,
+    lastRunnerUp: runnerUp ? { id: runnerUp.id, name: runnerUp.name } : null,
   });
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
 }
@@ -925,23 +980,17 @@ function spinWheel() {
   animateWheelSpin(n, winnerIdx, async () => {
     const winner = remaining[winnerIdx];
     wheelUi.lastWinner = winner;
-    let newOrder = [...cur.wheelOrder, winner];
-    let newRemaining = remaining.filter((_, i) => i !== winnerIdx);
-
-    // Once the first group reaches its full size, there's no need to keep
-    // spinning for the rest — everyone left over automatically fills group two.
+    const orderWithWinner = [...cur.wheelOrder, winner];
+    const remainingAfterWinner = remaining.filter((_, i) => i !== winnerIdx);
     const halfSize = Math.ceil(cur.players.length / 2);
-    if (newOrder.length >= halfSize && newRemaining.length > 0) {
-      newOrder = [...newOrder, ...newRemaining];
-      newRemaining = [];
-    }
+    const folded = foldRemainingIntoGroupTwo(orderWithWinner, remainingAfterWinner, cur.seededRunnerUp || null, halfSize);
 
     // Only clear the "spinning" flag once the new state is actually saved.
     // Otherwise a background poll landing in this exact window can render
     // the OLD state (still showing leftover players in the wheel) before
     // this update is persisted, making the wheel look like it needs to
     // keep spinning for players who were already auto-assigned.
-    await updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
+    await updateCurrent({ wheelOrder: folded.wheelOrder, remaining: folded.remaining, seededRunnerUp: folded.seededRunnerUp });
     wheelUi.spinning = false;
     render();
     playLandThud();
@@ -1124,6 +1173,27 @@ function registerStageHtml() {
           <span style="flex:1">${escapeHtml(p.name)} <span style="opacity:0.55">— ${escapeHtml(p.club)}</span></span>
         </div>`).join("");
 
+  // Seeding box: only relevant in two-group mode, and only if the last
+  // champion and/or runner-up actually confirmed attendance today.
+  const championConfirmed = appState.lastChampion && confirmed.some(m => m.id === appState.lastChampion.id);
+  const runnerUpConfirmed = appState.lastRunnerUp && confirmed.some(m => m.id === appState.lastRunnerUp.id);
+  const useSeeding = window.__useSeeding !== false;
+  let seedingBoxHtml = "";
+  if (groupMode === "two" && (championConfirmed || runnerUpConfirmed)) {
+    const parts = [];
+    if (championConfirmed) parts.push(`بطل آخر بطولة (${escapeHtml(appState.lastChampion.name)}) ← المجموعة الأولى`);
+    if (runnerUpConfirmed) parts.push(`وصيف آخر بطولة (${escapeHtml(appState.lastRunnerUp.name)}) ← المجموعة الثانية`);
+    seedingBoxHtml = `
+      <div class="add-member-box">
+        <div class="add-member-label">تخصيص البطل والوصيف تلقائياً</div>
+        <p class="hint" style="margin-bottom:10px;">${parts.join(" — ")}. باقي المشاركين يدخلون القرعة الدوارة عادي.</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="seedingToggle" ${useSeeding ? "checked" : ""} onchange="setUseSeeding(this.checked)">
+          فعّل هذا التخصيص لهذه البطولة (بدل ما يدخلوا القرعة زي البقية)
+        </label>
+      </div>`;
+  }
+
   return `<div class="card">
     <div class="tournament-badge">البطولة القادمة: ${upcomingName}</div>
     <h2>بدء البطولة</h2>
@@ -1136,6 +1206,8 @@ function registerStageHtml() {
       <button class="mode-btn ${groupMode==='two'?'active':''}" onclick="setGroupMode('two')">مجموعتين (قرعة دوارة)</button>
       <button class="mode-btn ${groupMode==='one'?'active':''}" onclick="setGroupMode('one')">مجموعة واحدة (بدون قرعة)</button>
     </div>
+
+    ${seedingBoxHtml}
 
     <button class="cta-btn" ${confirmed.length < minNeeded ? "disabled" : ""} onclick="startNewTournament()">
       ${groupMode==='two' ? 'تجهيز القرعة الدوارة ←' : 'إنشاء جدول المباريات ←'}
@@ -1189,6 +1261,7 @@ function wheelStageHtml() {
       <div class="group-box"><h3 class="group-title">المجموعة الثانية</h3>${groupBHtml}</div>
     </div>
     ${wheelComplete ? `<button class="cta-btn" onclick="proceedToGroups()">الانتقال لجدول المباريات ←</button>` : ""}
+    ${!wheelComplete && remaining.length === 0 && cur.seededRunnerUp ? `<div class="empty-note">جارِ تثبيت الوصيف بالمجموعة الثانية...</div>` : ""}
   </div>`;
 }
 
@@ -1433,6 +1506,10 @@ function render() {
 // ============ UI event handlers exposed globally ============
 window.setGroupMode = function(mode) {
   window.__selectedGroupMode = mode;
+  render();
+};
+window.setUseSeeding = function(checked) {
+  window.__useSeeding = checked;
   render();
 };
 window.setView = function(v) {

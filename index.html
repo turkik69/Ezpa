@@ -1,20 +1,211 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>دوري أبطال العزبة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; font-family: 'Tajawal', sans-serif; margin:0; padding:0; }
+  html,body { min-height:100vh; }
+  body {
+    direction: rtl;
+    background: linear-gradient(180deg, #0C2E22 0%, #0F3D2E 55%, #0C2E22 100%);
+    color: #F4F1EA;
+    padding: 24px 16px 80px;
+    position: relative;
+    overflow-x: hidden;
+  }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  .floodlight-glow {
+    position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(232,184,75,0.18) 0%, rgba(232,184,75,0) 70%);
+    pointer-events: none;
+  }
+  header { display:flex; align-items:center; gap:14px; max-width:1040px; margin:0 auto 16px; position:relative; }
+  .header-badge {
+    width:52px; height:52px; border-radius:50%; background:#E8B84B;
+    display:flex; align-items:center; justify-content:center; font-size:26px;
+    flex-shrink:0; box-shadow: 0 0 0 3px rgba(232,184,75,0.25);
+  }
+  h1 { font-size:26px; font-weight:900; letter-spacing:-0.5px; }
+  .subtitle { font-size:13px; color: rgba(244,241,234,0.6); margin-top:2px; }
+  .tab-row { max-width:1040px; margin:0 auto 20px; display:flex; gap:8px; flex-wrap:wrap; }
+  .tab-btn {
+    padding:10px 18px; border-radius:999px; border:1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05); color: rgba(244,241,234,0.7);
+    font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .tab-btn.active { background: rgba(232,184,75,0.18); border-color:#E8B84B; color:#E8B84B; }
+  .layout { max-width:1040px; margin:0 auto; display:grid; grid-template-columns: 1fr 300px; gap:18px; align-items:start; }
+  @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }
+  .card {
+    background: rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    border-radius:18px; padding:22px 20px; backdrop-filter: blur(6px);
+  }
+  .sidebar-card {
+    background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
+    border-radius:16px; padding:16px; font-size:13px;
+  }
+  .sidebar { position:sticky; top:16px; }
+  .tournament-badge {
+    display:inline-block; background: linear-gradient(135deg, rgba(232,184,75,0.25), rgba(232,184,75,0.1));
+    color:#E8B84B; font-weight:900; font-size:13.5px; border-radius:999px;
+    padding:6px 16px; margin-bottom:14px; border:1px solid rgba(232,184,75,0.35);
+  }
+  h2 { font-size:19px; font-weight:800; margin-bottom:6px; }
+  .hint { font-size:13.5px; color: rgba(244,241,234,0.65); line-height:1.6; margin-bottom:18px; }
+  .input-row { display:flex; gap:8px; margin-bottom:16px; }
+  .text-input {
+    flex:1; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06); color:#F4F1EA; font-size:14.5px; outline:none;
+  }
+  .primary-btn {
+    padding:12px 18px; border-radius:12px; border:none; background:#E8B84B;
+    color:#0F3D2E; font-weight:800; font-size:14px; cursor:pointer;
+  }
+  .player-grid { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; max-height:280px; overflow-y:auto; }
+  .player-chip {
+    display:flex; align-items:center; gap:10px; background: rgba(255,255,255,0.06);
+    border-radius:10px; padding:9px 12px; font-size:14px;
+  }
+  .player-num {
+    background:#1F5D45; color:#F4F1EA; border-radius:50%; width:22px; height:22px;
+    font-size:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .chip-remove { background:none; border:none; color:#C0392B; font-size:15px; cursor:pointer; padding:2px 6px; }
+  .empty-note { font-size:13px; color: rgba(244,241,234,0.45); padding:8px 0; text-align:center; }
+  .empty-note-sm { font-size:11.5px; color: rgba(244,241,234,0.4); padding:4px 0; }
+  .count-badge {
+    display:inline-block; background: rgba(232,184,75,0.15); color:#E8B84B; font-weight:700;
+    font-size:13px; border-radius:999px; padding:5px 14px; margin-bottom:18px;
+  }
+  .mode-switch { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .mode-btn {
+    flex:1 1 160px; padding:12px 10px; border-radius:12px; border:1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.04); color: rgba(244,241,234,0.7); font-size:13.5px; font-weight:700; cursor:pointer;
+  }
+  .mode-btn.active { background: rgba(232,184,75,0.18); border-color:#E8B84B; color:#E8B84B; }
+  .cta-btn {
+    width:100%; padding:14px; border-radius:14px; border:none;
+    background: linear-gradient(135deg, #E8B84B, #D9A62E); color:#0F3D2E;
+    font-weight:900; font-size:15px; cursor:pointer; margin-top:10px;
+  }
+  .cta-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .wheel-area { display:flex; flex-direction:column; align-items:center; gap:16px; margin-bottom:20px; }
+  .wheel-wrap { position:relative; width:240px; height:240px; display:flex; align-items:center; justify-content:center; }
+  .pointer { position:absolute; top:-14px; font-size:26px; color:#C0392B; z-index:3; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4)); }
+  .wheel {
+    width:220px; height:220px; border-radius:50%; position:relative;
+    border:5px solid #F4F1EA; box-shadow: 0 0 0 3px #0F3D2E, 0 10px 30px rgba(0,0,0,0.4);
+    transition: transform 4.2s cubic-bezier(0.12, 0.67, 0.15, 1);
+  }
+  .wheel-label {
+    position:absolute; top:50%; left:50%; transform-origin:0 0;
+    font-size:10.5px; font-weight:800; color:#0F3D2E; width:90px; text-align:center;
+    margin-left:-45px; margin-top:-6px;
+  }
+  .wheel-hub {
+    position:absolute; width:44px; height:44px; border-radius:50%; background:#0F3D2E;
+    border:3px solid #F4F1EA; display:flex; align-items:center; justify-content:center; font-size:20px; z-index:2;
+  }
+  .spin-btn { padding:13px 32px; border-radius:999px; border:none; background:#E8B84B; color:#0F3D2E; font-weight:900; font-size:15px; cursor:pointer; }
+  .spin-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .winner-banner { background: rgba(232,184,75,0.15); color:#E8B84B; font-weight:800; font-size:16px; padding:8px 20px; border-radius:12px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  @media (max-width: 560px) { .two-col { grid-template-columns:1fr; } }
+  .group-box { background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:14px; }
+  .group-title { font-size:14.5px; font-weight:800; color:#E8B84B; margin-bottom:10px; }
+  .group-row { font-size:13.5px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
+  .match-list { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+  .match-row { display:flex; align-items:center; gap:6px; font-size:12.5px; background: rgba(255,255,255,0.04); border-radius:8px; padding:8px; }
+  .match-name { flex:1; text-align:center; font-weight:600; }
+  .match-name-sm { flex:1; text-align:center; font-size:11px; color: rgba(244,241,234,0.6); }
+  .score-input {
+    width:38px; padding:5px; border-radius:6px; border:1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08); color:#F4F1EA; text-align:center; font-size:13px;
+  }
+  .red-input {
+    width:32px; padding:4px; border-radius:6px; border:1px solid rgba(192,57,43,0.4);
+    background: rgba(192,57,43,0.1); color:#F4F1EA; text-align:center; font-size:12px;
+  }
+  .red-card-hint { font-size:11px; color: rgba(244,241,234,0.45); margin:4px 0; }
+  .red-row { display:flex; align-items:center; gap:6px; background: rgba(192,57,43,0.06); border-radius:8px; padding:6px 8px; }
+  .vs { font-weight:700; color: rgba(244,241,234,0.5); }
+  .vs-sm { font-weight:700; color: rgba(244,241,234,0.3); font-size:11px; }
+  table.score-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+  table.score-table th { padding:6px 3px; color: rgba(244,241,234,0.5); font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }
+  table.score-table td { padding:6px 3px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.06); }
+  .qualify-row { background: rgba(232,184,75,0.1); }
+  .final-box { background: rgba(232,184,75,0.08); border:1px solid rgba(232,184,75,0.3); border-radius:14px; padding:16px; }
+  .champion-banner {
+    margin-top:14px; text-align:center; font-size:18px; font-weight:900; color:#E8B84B;
+    padding:12px; background: rgba(232,184,75,0.12); border-radius:12px; margin-bottom:12px;
+  }
+  .warn-note { font-size:12px; color:#C0392B; margin-top:6px; text-align:center; }
+  .stat-block { margin-bottom:16px; }
+  .stat-block-title { font-size:13px; font-weight:800; color:#E8B84B; margin-bottom:6px; }
+  .stat-row { display:flex; align-items:center; gap:8px; font-size:12.5px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .stat-rank {
+    background: rgba(255,255,255,0.08); border-radius:50%; width:18px; height:18px; font-size:10px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .stat-value { font-weight:800; color:#E8B84B; }
+  .archive-divider { height:1px; background: rgba(255,255,255,0.1); margin:18px 0; }
+  .archive-row { font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .loading-box { text-align:center; padding:60px; color: rgba(244,241,234,0.6); }
+  .sync-badge {
+    position:fixed; bottom:14px; left:14px; font-size:11px; color: rgba(244,241,234,0.4);
+    background: rgba(0,0,0,0.3); padding:5px 10px; border-radius:999px; z-index:10;
+  }
+</style>
+</head>
+<body>
+  <div class="floodlight-glow"></div>
+  <div id="app"></div>
+  <div class="sync-badge" id="syncBadge">جارِ الاتصال...</div>
+
+<script>
+// ============ Supabase config ============
+const SUPABASE_URL = "https://eooytvurkabmiooknbgk.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvb3l0dnVya2FibWlvb2tuYmdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODY1NDcsImV4cCI6MjA5ODY2MjU0N30.deedSR1LO626DI42ANa6R9PX4USMZR_ss9SVrL_BR7s";
+const STATE_ROW_ID = "ezba-league-main";
+const REST_URL = SUPABASE_URL + "/rest/v1/ezba_league_state";
+
+async function fetchState() {
+  const res = await fetch(REST_URL + "?id=eq." + STATE_ROW_ID + "&select=data", {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+  });
+  if (!res.ok) throw new Error("fetch failed: " + res.status);
+  const rows = await res.json();
+  if (rows.length === 0) return null;
+  return rows[0].data;
+}
+
+async function saveState(data) {
+  const res = await fetch(REST_URL, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({ id: STATE_ROW_ID, data, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error("save failed: " + res.status + " " + t);
+  }
+}
 
 // ============ Constants ============
 const TOURNAMENT_NAMES = [
-  "بطولة النخبة",
-  "بطولة الصقور",
-  "بطولة الفرسان",
-  "بطولة الأساطير",
-  "بطولة الأبطال",
-  "بطولة الغزاة",
-  "بطولة الأسود",
-  "بطولة الصدارة",
-  "بطولة الرواد",
-  "بطولة القمة",
+  "بطولة النخبة","بطولة الصقور","بطولة الفرسان","بطولة الأساطير","بطولة الأبطال",
+  "بطولة الغزاة","بطولة الأسود","بطولة الصدارة","بطولة الرواد","بطولة القمة",
 ];
-
-const STORAGE_KEY = "ezba-league-state-v1";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -36,8 +227,7 @@ function roundRobinPairs(players) {
   const arr = [...list];
   for (let r = 0; r < rounds; r++) {
     for (let i = 0; i < n / 2; i++) {
-      const p1 = arr[i];
-      const p2 = arr[n - 1 - i];
+      const p1 = arr[i], p2 = arr[n - 1 - i];
       if (p1 && p2) pairs.push([p1, p2]);
     }
     const fixed = arr[0];
@@ -51,18 +241,16 @@ function roundRobinPairs(players) {
 function standingsFor(players, matches, tiebreakLog) {
   const table = {};
   players.forEach((p) => {
-    table[p.id] = { id: p.id, name: p.name, played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0, redCards: 0 };
+    table[p.id] = { id:p.id, name:p.name, played:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, pts:0, redCards:0 };
   });
   matches.forEach((m) => {
     if (m.scoreA == null || m.scoreB == null) return;
-    const a = table[m.a.id];
-    const b = table[m.b.id];
+    const a = table[m.a.id], b = table[m.b.id];
     if (!a || !b) return;
     a.played++; b.played++;
     a.gf += m.scoreA; a.ga += m.scoreB;
     b.gf += m.scoreB; b.ga += m.scoreA;
-    a.redCards += m.redA || 0;
-    b.redCards += m.redB || 0;
+    a.redCards += m.redA || 0; b.redCards += m.redB || 0;
     if (m.scoreA > m.scoreB) { a.w++; b.l++; a.pts += 3; }
     else if (m.scoreA < m.scoreB) { b.w++; a.l++; b.pts += 3; }
     else { a.d++; b.d++; a.pts += 1; b.pts += 1; }
@@ -70,667 +258,275 @@ function standingsFor(players, matches, tiebreakLog) {
   Object.values(table).forEach((t) => (t.gd = t.gf - t.ga));
 
   const list = Object.values(table);
-
   const byPts = {};
   list.forEach((t) => { byPts[t.pts] = byPts[t.pts] || []; byPts[t.pts].push(t); });
-  const ptsKeysDesc = Object.keys(byPts).map(Number).sort((a, b) => b - a);
+  const ptsKeysDesc = Object.keys(byPts).map(Number).sort((a,b) => b-a);
 
   const ordered = [];
   ptsKeysDesc.forEach((pts) => {
     const cluster = byPts[pts];
     if (cluster.length === 1) { ordered.push(cluster[0]); return; }
-
     const byGf = {};
     cluster.forEach((t) => { byGf[t.gf] = byGf[t.gf] || []; byGf[t.gf].push(t); });
-    const gfKeysDesc = Object.keys(byGf).map(Number).sort((a, b) => b - a);
-
+    const gfKeysDesc = Object.keys(byGf).map(Number).sort((a,b) => b-a);
     gfKeysDesc.forEach((gf) => {
       const gfCluster = byGf[gf];
       if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
-
       const byRed = {};
       gfCluster.forEach((t) => { byRed[t.redCards] = byRed[t.redCards] || []; byRed[t.redCards].push(t); });
-      const redKeysAsc = Object.keys(byRed).map(Number).sort((a, b) => a - b);
-
+      const redKeysAsc = Object.keys(byRed).map(Number).sort((a,b) => a-b);
       redKeysAsc.forEach((red) => {
         const redCluster = byRed[red];
         if (redCluster.length === 1) { ordered.push(redCluster[0]); return; }
-
         const shuffled = shuffle(redCluster);
         if (tiebreakLog && shuffled.length >= 2) {
-          tiebreakLog.push({ id: uid(), names: shuffled.map((s) => s.name), winner: shuffled[0].name, pts, gf, red });
+          tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf, red });
         }
         ordered.push(...shuffled);
       });
     });
   });
-
   return ordered;
 }
 
-const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null });
-
-// ============ Main App ============
-export default function App() {
-  const [appState, setAppState] = useState(emptyState());
-  const [loaded, setLoaded] = useState(false);
-  const [view, setView] = useState("tournament");
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await window.storage.get(STORAGE_KEY, true);
-        if (!cancelled && res && res.value) setAppState(JSON.parse(res.value));
-      } catch (e) {
-        // key not created yet
-      }
-      if (!cancelled) setLoaded(true);
-    }
-    load();
-    const interval = setInterval(load, 4000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
-
-  const persist = useCallback(async (next) => {
-    setAppState(next);
-    try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify(next), true);
-    } catch (e) {
-      console.error("تعذر حفظ البيانات المشتركة", e);
-    }
-  }, []);
-
-  if (!loaded) {
-    return (
-      <div style={styles.page}>
-        <style>{fontImport}</style>
-        <div style={styles.loadingBox}>جارِ تحميل بيانات الدوري المشتركة...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={styles.page}>
-      <style>{fontImport}</style>
-      <div style={styles.floodlightGlow} />
-      <header style={styles.header}>
-        <div style={styles.headerBadge}>⚽</div>
-        <div style={{ flex: 1 }}>
-          <h1 style={styles.title}>دوري أبطال العزبة</h1>
-          <p style={styles.subtitle}>
-            {appState.current ? appState.current.name : "بانتظار بطولة جديدة"} — بيانات مباشرة لكل المستخدمين
-          </p>
-        </div>
-      </header>
-
-      <div style={styles.tabRow}>
-        <button style={{ ...styles.tabBtn, ...(view === "tournament" ? styles.tabBtnActive : {}) }} onClick={() => setView("tournament")}>
-          🏆 البطولة الحالية
-        </button>
-        <button style={{ ...styles.tabBtn, ...(view === "stats" ? styles.tabBtnActive : {}) }} onClick={() => setView("stats")}>
-          📊 التصنيفات التاريخية
-        </button>
-      </div>
-
-      <div style={styles.layout}>
-        <main style={styles.main}>
-          {view === "tournament" ? <TournamentFlow appState={appState} persist={persist} /> : <StatsPanel archive={appState.archive} />}
-        </main>
-        {view === "tournament" && (
-          <aside style={styles.sidebar}>
-            <StatsPanel archive={appState.archive} compact />
-          </aside>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============ Tournament Flow ============
-function TournamentFlow({ appState, persist }) {
-  const cur = appState.current;
-
-  const startNewTournament = (players, groupMode) => {
-    const name = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
-    const base = {
-      id: uid(),
-      name,
-      groupMode,
-      stage: groupMode === "two" ? "wheel" : "single",
-      players,
-      wheelOrder: [],
-      remaining: groupMode === "two" ? shuffle(players) : [],
-      groupA: [],
-      groupB: [],
-      matchesA: [],
-      matchesB: [],
-      singleMatches:
-        groupMode === "one"
-          ? roundRobinPairs(shuffle(players)).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 }))
-          : [],
-      semis: null,
-      final: null,
-      tiebreakLog: [],
-    };
-    persist({ ...appState, current: base });
-  };
-
-  const updateCurrent = (patch) => {
-    persist({ ...appState, current: { ...cur, ...patch } });
-  };
-
-  const finishTournament = (champion, runnerUp, semifinalistsOut, finalStandingsAll) => {
-    const archiveEntry = {
-      id: uid(),
-      name: cur.name,
-      champion: champion?.name || null,
-      runnerUp: runnerUp?.name || null,
-      semifinalists: semifinalistsOut.map((p) => p?.name).filter(Boolean),
-      players: finalStandingsAll,
-      promotedNames: cur.promotedNames || [],
-    };
-    persist({
-      tournamentIndex: appState.tournamentIndex + 1,
-      archive: [...appState.archive, archiveEntry],
-      current: null,
-    });
-  };
-
-  if (!cur) {
-    return <RegisterStage upcomingName={TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length]} onStart={startNewTournament} />;
-  }
-  if (cur.stage === "wheel") return <WheelStage cur={cur} updateCurrent={updateCurrent} />;
-  if (cur.stage === "groups") return <GroupsStage cur={cur} updateCurrent={updateCurrent} />;
-  if (cur.stage === "single") return <SingleGroupStage cur={cur} updateCurrent={updateCurrent} finishTournament={finishTournament} />;
-  if (cur.stage === "knockout") return <KnockoutStage cur={cur} updateCurrent={updateCurrent} finishTournament={finishTournament} />;
-  return null;
-}
-
-// ============ Register Stage ============
-function RegisterStage({ upcomingName, onStart }) {
-  const [players, setPlayers] = useState([]);
-  const [nameInput, setNameInput] = useState("");
-  const [groupMode, setGroupMode] = useState("two");
-
-  const addPlayer = () => {
-    const name = nameInput.trim();
-    if (!name) return;
-    setPlayers((p) => [...p, { id: uid(), name }]);
-    setNameInput("");
-  };
-  const removePlayer = (id) => setPlayers((p) => p.filter((x) => x.id !== id));
-
-  return (
-    <div style={styles.card}>
-      <div style={styles.tournamentBadge}>البطولة القادمة: {upcomingName}</div>
-      <h2 style={styles.h2}>📋 تسجيل المشاركين</h2>
-      <p style={styles.hint}>أدخل اسم كل لاعب حاضر هالأسبوع، وبعدها اختر طريقة اللعب.</p>
-
-      <div style={styles.inputRow}>
-        <input
-          style={styles.input}
-          value={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addPlayer()}
-          placeholder="اسم اللاعب..."
-        />
-        <button style={styles.primaryBtn} onClick={addPlayer}>+ إضافة</button>
-      </div>
-
-      <div style={styles.playerGrid}>
-        {players.map((p, i) => (
-          <div key={p.id} style={styles.playerChip}>
-            <span style={styles.playerNum}>{i + 1}</span>
-            <span style={{ flex: 1 }}>{p.name}</span>
-            <button style={styles.chipRemove} onClick={() => removePlayer(p.id)}>✕</button>
-          </div>
-        ))}
-        {players.length === 0 && <div style={styles.emptyNote}>لسا ما فيه أسماء مسجلة</div>}
-      </div>
-
-      <div style={styles.countBadge}>عدد المشاركين: {players.length}</div>
-
-      <div style={styles.modeSwitch}>
-        <button style={{ ...styles.modeBtn, ...(groupMode === "two" ? styles.modeBtnActive : {}) }} onClick={() => setGroupMode("two")}>
-          🎡 مجموعتين (قرعة دوارة)
-        </button>
-        <button style={{ ...styles.modeBtn, ...(groupMode === "one" ? styles.modeBtnActive : {}) }} onClick={() => setGroupMode("one")}>
-          🔀 مجموعة واحدة (بدون قرعة)
-        </button>
-      </div>
-
-      <button
-        style={{ ...styles.ctaBtn, opacity: players.length < (groupMode === "two" ? 3 : 2) ? 0.5 : 1 }}
-        disabled={players.length < (groupMode === "two" ? 3 : 2)}
-        onClick={() => onStart(players, groupMode)}
-      >
-        {groupMode === "two" ? "تجهيز القرعة الدوارة →" : "إنشاء جدول المباريات →"}
-      </button>
-    </div>
-  );
-}
-
-// ============ Wheel Stage ============
-function WheelStage({ cur, updateCurrent }) {
-  const [rotation, setRotation] = useState(0);
-  const [spinning, setSpinning] = useState(false);
-  const [lastWinner, setLastWinner] = useState(null);
-
-  const players = cur.players;
-  const remaining = cur.remaining;
-  const wheelOrder = cur.wheelOrder;
-  const halfSize = Math.ceil(players.length / 2);
-  const groupA = wheelOrder.slice(0, halfSize);
-  const groupB = wheelOrder.slice(halfSize);
-  const colors = ["#E8B84B", "#1F5D45", "#C0392B", "#F4F1EA", "#2C7A5B", "#D9A62E"];
-  const n = remaining.length;
-
-  const spin = () => {
-    if (spinning || n === 0) return;
-    setSpinning(true);
-    const winnerIdx = Math.floor(Math.random() * n);
-    const segAngle = 360 / n;
-    const winnerCenter = winnerIdx * segAngle + segAngle / 2;
-    const extraSpins = 6 + Math.floor(Math.random() * 3);
-    const targetRotation = rotation + extraSpins * 360 + (360 - winnerCenter) - (rotation % 360);
-    setRotation(targetRotation);
-
-    setTimeout(() => {
-      const winner = remaining[winnerIdx];
-      setLastWinner(winner);
-      const newOrder = [...wheelOrder, winner];
-      const newRemaining = remaining.filter((_, i) => i !== winnerIdx);
-      updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
-      setSpinning(false);
-    }, 4200);
-  };
-
-  const wheelComplete = remaining.length === 0 && wheelOrder.length === players.length && players.length > 0;
-
-  const proceedToGroups = () => {
-    const gA = wheelOrder.slice(0, halfSize);
-    const gB = wheelOrder.slice(halfSize);
-    updateCurrent({
-      stage: "groups",
-      groupA: gA,
-      groupB: gB,
-      matchesA: roundRobinPairs(gA).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 })),
-      matchesB: roundRobinPairs(gB).map(([a, b]) => ({ id: uid(), a, b, scoreA: null, scoreB: null, redA: 0, redB: 0 })),
-    });
-  };
-
-  return (
-    <div style={styles.card}>
-      <div style={styles.tournamentBadge}>{cur.name}</div>
-      <h2 style={styles.h2}>🎡 القرعة الدوارة</h2>
-      <p style={styles.hint}>اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين.</p>
-
-      <div style={styles.wheelArea}>
-        <div style={styles.wheelWrap}>
-          <div style={styles.pointer}>▼</div>
-          <div
-            style={{
-              ...styles.wheel,
-              transform: `rotate(${rotation}deg)`,
-              transition: spinning ? "transform 4.2s cubic-bezier(0.12, 0.67, 0.15, 1)" : "none",
-              background: n > 0 ? conicGradient(n, colors) : "#12321f",
-            }}
-          >
-            {remaining.map((p, i) => {
-              const segAngle = 360 / n;
-              const angle = i * segAngle + segAngle / 2;
-              return (
-                <div key={p.id} style={{ ...styles.wheelLabel, transform: `rotate(${angle}deg) translate(0, -108px) rotate(${-angle}deg)` }}>
-                  {p.name}
-                </div>
-              );
-            })}
-          </div>
-          <div style={styles.wheelHub}>⚽</div>
-        </div>
-
-        <button style={{ ...styles.spinBtn, opacity: spinning || n === 0 ? 0.5 : 1 }} disabled={spinning || n === 0} onClick={spin}>
-          {spinning ? "...تدور" : n === 0 ? "اكتملت القرعة" : "ابدأ الدوران"}
-        </button>
-
-        {lastWinner && !spinning && <div style={styles.winnerBanner}>🎉 {lastWinner.name}</div>}
-      </div>
-
-      <div style={styles.twoColGroups}>
-        <div style={styles.groupBox}>
-          <h3 style={styles.groupTitle}>المجموعة الأولى</h3>
-          {groupA.map((p, i) => (
-            <div key={p.id} style={styles.groupRow}>{i + 1}. {p.name}</div>
-          ))}
-          {groupA.length === 0 && <div style={styles.emptyNote}>—</div>}
-        </div>
-        <div style={styles.groupBox}>
-          <h3 style={styles.groupTitle}>المجموعة الثانية</h3>
-          {groupB.map((p, i) => (
-            <div key={p.id} style={styles.groupRow}>{i + 1}. {p.name}</div>
-          ))}
-          {groupB.length === 0 && <div style={styles.emptyNote}>—</div>}
-        </div>
-      </div>
-
-      {wheelComplete && (
-        <button style={styles.ctaBtn} onClick={proceedToGroups}>الانتقال لجدول المباريات →</button>
-      )}
-    </div>
-  );
-}
-
 function conicGradient(n, colors) {
-  const seg = 360 / n;
+  const seg = 360/n;
   const stops = [];
-  for (let i = 0; i < n; i++) {
+  for (let i=0;i<n;i++){
     const c = colors[i % colors.length];
-    stops.push(`${c} ${i * seg}deg ${(i + 1) * seg}deg`);
+    stops.push(`${c} ${i*seg}deg ${(i+1)*seg}deg`);
   }
   return `conic-gradient(${stops.join(", ")})`;
 }
 
-// ============ Groups (League) Stage ============
-function GroupsStage({ cur, updateCurrent }) {
-  const tableA = useMemo(() => standingsFor(cur.groupA, cur.matchesA, []), [cur.groupA, cur.matchesA]);
-  const tableB = useMemo(() => standingsFor(cur.groupB, cur.matchesB, []), [cur.groupB, cur.matchesB]);
-
-  const updateMatch = (which, matchId, field, value) => {
-    const list = which === "A" ? cur.matchesA : cur.matchesB;
-    const updated = list.map((m) => (m.id === matchId ? { ...m, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } : m));
-    updateCurrent(which === "A" ? { matchesA: updated } : { matchesB: updated });
-  };
-
-  const allAPlayed = cur.matchesA.length > 0 && cur.matchesA.every((m) => m.scoreA != null && m.scoreB != null);
-  const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every((m) => m.scoreA != null && m.scoreB != null);
-
-  const goToKnockout = () => {
-    const logA = [];
-    const logB = [];
-    const finalTableA = standingsFor(cur.groupA, cur.matchesA, logA);
-    const finalTableB = standingsFor(cur.groupB, cur.matchesB, logB);
-    const a1 = finalTableA[0], a2 = finalTableA[1];
-    const b1 = finalTableB[0], b2 = finalTableB[1];
-    const promotedNames = [a1?.name, a2?.name, b1?.name, b2?.name].filter(Boolean);
-    const eliminatedNames = [...finalTableA.slice(2), ...finalTableB.slice(2)].map((t) => t.name);
-    updateCurrent({
-      stage: "knockout",
-      semis: {
-        m1: { id: uid(), label: "نصف النهائي 1", a: a1, b: b2, scoreA: null, scoreB: null },
-        m2: { id: uid(), label: "نصف النهائي 2", a: b1, b: a2, scoreA: null, scoreB: null },
-      },
-      tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
-      fullStandings: [...finalTableA, ...finalTableB],
-      promotedNames,
-      eliminatedNames,
-    });
-  };
-
-  return (
-    <div style={styles.card}>
-      <div style={styles.tournamentBadge}>{cur.name}</div>
-      <h2 style={styles.h2}>⚔️ دوري المجموعات</h2>
-      <p style={styles.hint}>
-        أدخل نتيجة كل مباراة والبطاقات الحمراء. ترتيب الصعود: نقاط ← أهداف مسجلة ← أقل بطاقات حمراء ← قرعة عشوائية عند التعادل التام.
-      </p>
-
-      <div style={styles.twoColGroups}>
-        <GroupPanel title="المجموعة الأولى" matches={cur.matchesA} updateScore={(id, f, v) => updateMatch("A", id, f, v)} table={tableA} />
-        <GroupPanel title="المجموعة الثانية" matches={cur.matchesB} updateScore={(id, f, v) => updateMatch("B", id, f, v)} table={tableB} />
-      </div>
-
-      <button style={{ ...styles.ctaBtn, opacity: allAPlayed && allBPlayed ? 1 : 0.5 }} disabled={!(allAPlayed && allBPlayed)} onClick={goToKnockout}>
-        الانتقال لنصف النهائي →
-      </button>
-      {!(allAPlayed && allBPlayed) && <div style={styles.emptyNote}>أكمل جميع نتائج المجموعتين للمتابعة</div>}
-    </div>
-  );
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-function GroupPanel({ title, matches, updateScore, table }) {
-  return (
-    <div style={styles.groupBox}>
-      <h3 style={styles.groupTitle}>{title}</h3>
-      <div style={styles.matchList}>
-        {matches.map((m) => (
-          <div key={m.id} style={styles.matchRow}>
-            <span style={styles.matchName}>{m.a.name}</span>
-            <input type="number" min="0" style={styles.scoreInput} value={m.scoreA ?? ""} onChange={(e) => updateScore(m.id, "scoreA", e.target.value)} />
-            <span style={styles.vs}>-</span>
-            <input type="number" min="0" style={styles.scoreInput} value={m.scoreB ?? ""} onChange={(e) => updateScore(m.id, "scoreB", e.target.value)} />
-            <span style={styles.matchName}>{m.b.name}</span>
-          </div>
-        ))}
-      </div>
+// ============ App State ============
+const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null });
+let appState = emptyState();
+let loaded = false;
+let view = "tournament";
+let registerDraft = { players: [], nameInput: "", groupMode: "two" };
+let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
+let saving = false;
 
-      <div style={styles.redCardHint}>🟥 بطاقات حمراء (اختياري لكل مباراة)</div>
-      <div style={styles.matchList}>
-        {matches.map((m) => (
-          <div key={m.id + "-red"} style={styles.redRow}>
-            <span style={styles.matchNameSmall}>{m.a.name}</span>
-            <input type="number" min="0" style={styles.redInput} value={m.redA ?? 0} onChange={(e) => updateScore(m.id, "redA", e.target.value)} />
-            <span style={styles.vsSmall}>|</span>
-            <input type="number" min="0" style={styles.redInput} value={m.redB ?? 0} onChange={(e) => updateScore(m.id, "redB", e.target.value)} />
-            <span style={styles.matchNameSmall}>{m.b.name}</span>
-          </div>
-        ))}
-      </div>
+const app = document.getElementById("app");
+const syncBadge = document.getElementById("syncBadge");
 
-      <ScoreTable table={table} />
-    </div>
-  );
+async function persist(next) {
+  appState = next;
+  render();
+  saving = true;
+  syncBadge.textContent = "جارِ الحفظ...";
+  try {
+    await saveState(next);
+    syncBadge.textContent = "متصل ✓ آخر تحديث: " + new Date().toLocaleTimeString("ar");
+  } catch (e) {
+    console.error(e);
+    syncBadge.textContent = "تعذر الحفظ، حاول مرة ثانية";
+  }
+  saving = false;
 }
 
-function ScoreTable({ table }) {
-  return (
-    <table style={styles.table}>
-      <thead>
-        <tr>
-          <th style={styles.th}>#</th>
-          <th style={styles.th}>اللاعب</th>
-          <th style={styles.th}>لعب</th>
-          <th style={styles.th}>ف</th>
-          <th style={styles.th}>خ</th>
-          <th style={styles.th}>فأ</th>
-          <th style={styles.th}>🟥</th>
-          <th style={styles.th}>نقاط</th>
-        </tr>
-      </thead>
-      <tbody>
-        {table.map((t, i) => (
-          <tr key={t.id} style={i < 2 ? styles.qualifyRow : {}}>
-            <td style={styles.td}>{i + 1}</td>
-            <td style={{ ...styles.td, textAlign: "right" }}>{t.name}</td>
-            <td style={styles.td}>{t.played}</td>
-            <td style={styles.td}>{t.w}</td>
-            <td style={styles.td}>{t.l}</td>
-            <td style={styles.td}>{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
-            <td style={styles.td}>{t.redCards}</td>
-            <td style={{ ...styles.td, fontWeight: 700 }}>{t.pts}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+async function pollLoad() {
+  try {
+    const data = await fetchState();
+    if (data) {
+      // avoid clobbering local wheel spin animation mid-flight
+      if (!wheelUi.spinning) {
+        appState = data;
+        render();
+      }
+    }
+    syncBadge.textContent = "متصل ✓ مباشر";
+  } catch (e) {
+    console.error(e);
+    syncBadge.textContent = "تعذر الاتصال بقاعدة البيانات";
+  }
 }
 
-// ============ Single Group Stage ============
-function SingleGroupStage({ cur, updateCurrent, finishTournament }) {
-  const table = useMemo(() => standingsFor(cur.players, cur.singleMatches, []), [cur.players, cur.singleMatches]);
+async function init() {
+  await pollLoad();
+  loaded = true;
+  render();
+  setInterval(pollLoad, 4000);
+}
 
-  const updateScore = (matchId, field, value) => {
-    const updated = cur.singleMatches.map((m) => (m.id === matchId ? { ...m, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } : m));
-    updateCurrent({ singleMatches: updated });
+// ============ Actions ============
+function startNewTournament() {
+  const players = registerDraft.players;
+  const groupMode = registerDraft.groupMode;
+  const name = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
+  const base = {
+    id: uid(), name, groupMode,
+    stage: groupMode === "two" ? "wheel" : "single",
+    players,
+    wheelOrder: [],
+    remaining: groupMode === "two" ? shuffle(players) : [],
+    groupA: [], groupB: [],
+    matchesA: [], matchesB: [],
+    singleMatches: groupMode === "one"
+      ? roundRobinPairs(shuffle(players)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 }))
+      : [],
+    semis: null, final: null, tiebreakLog: [],
   };
-
-  const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every((m) => m.scoreA != null && m.scoreB != null);
-
-  const finish = () => {
-    const finalTable = standingsFor(cur.players, cur.singleMatches, []);
-    const champion = finalTable[0];
-    const runnerUp = finalTable[1];
-    finishTournament(champion, runnerUp, [], finalTable);
-  };
-
-  return (
-    <div style={styles.card}>
-      <div style={styles.tournamentBadge}>{cur.name}</div>
-      <h2 style={styles.h2}>🔀 مجموعة واحدة — الكل ضد الكل</h2>
-      <p style={styles.hint}>جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. أدخل النتائج والبطاقات الحمراء يدوياً.</p>
-      <GroupPanel title={`جدول المباريات (${cur.players.length} مشاركين)`} matches={cur.singleMatches} updateScore={updateScore} table={table} />
-
-      <button style={{ ...styles.ctaBtn, opacity: allPlayed ? 1 : 0.5 }} disabled={!allPlayed} onClick={finish}>
-        إنهاء البطولة وتتويج البطل →
-      </button>
-    </div>
-  );
+  registerDraft = { players: [], nameInput: "", groupMode: "two" };
+  wheelUi = { rotation: 0, spinning: false, lastWinner: null };
+  persist({ ...appState, current: base });
 }
 
-// ============ Knockout Stage ============
-function KnockoutStage({ cur, updateCurrent, finishTournament }) {
+function updateCurrent(patch) {
+  persist({ ...appState, current: { ...appState.current, ...patch } });
+}
+
+function finishTournament(champion, runnerUp, semifinalistsOut, finalStandingsAll) {
+  const cur = appState.current;
+  const archiveEntry = {
+    id: uid(), name: cur.name,
+    champion: champion?.name || null,
+    runnerUp: runnerUp?.name || null,
+    semifinalists: semifinalistsOut.map(p => p?.name).filter(Boolean),
+    players: finalStandingsAll,
+    promotedNames: cur.promotedNames || [],
+  };
+  persist({
+    tournamentIndex: appState.tournamentIndex + 1,
+    archive: [...appState.archive, archiveEntry],
+    current: null,
+  });
+}
+
+function spinWheel() {
+  const cur = appState.current;
+  const remaining = cur.remaining;
+  const n = remaining.length;
+  if (wheelUi.spinning || n === 0) return;
+  wheelUi.spinning = true;
+  const winnerIdx = Math.floor(Math.random() * n);
+  const segAngle = 360 / n;
+  const winnerCenter = winnerIdx * segAngle + segAngle / 2;
+  const extraSpins = 6 + Math.floor(Math.random() * 3);
+  const targetRotation = wheelUi.rotation + extraSpins * 360 + (360 - winnerCenter) - (wheelUi.rotation % 360);
+  wheelUi.rotation = targetRotation;
+  render();
+
+  setTimeout(() => {
+    const winner = remaining[winnerIdx];
+    wheelUi.lastWinner = winner;
+    wheelUi.spinning = false;
+    const newOrder = [...cur.wheelOrder, winner];
+    const newRemaining = remaining.filter((_, i) => i !== winnerIdx);
+    updateCurrent({ wheelOrder: newOrder, remaining: newRemaining });
+  }, 4200);
+}
+
+function proceedToGroups() {
+  const cur = appState.current;
+  const halfSize = Math.ceil(cur.players.length / 2);
+  const gA = cur.wheelOrder.slice(0, halfSize);
+  const gB = cur.wheelOrder.slice(halfSize);
+  updateCurrent({
+    stage: "groups", groupA: gA, groupB: gB,
+    matchesA: roundRobinPairs(gA).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 })),
+    matchesB: roundRobinPairs(gB).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null, redA:0, redB:0 })),
+  });
+}
+
+function updateMatchField(which, matchId, field, value) {
+  const cur = appState.current;
+  const key = which === "A" ? "matchesA" : which === "B" ? "matchesB" : "singleMatches";
+  const list = cur[key];
+  const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  const updated = list.map(m => m.id === matchId ? { ...m, [field]: parsed } : m);
+  updateCurrent({ [key]: updated });
+}
+
+function goToKnockout() {
+  const cur = appState.current;
+  const logA = [], logB = [];
+  const finalTableA = standingsFor(cur.groupA, cur.matchesA, logA);
+  const finalTableB = standingsFor(cur.groupB, cur.matchesB, logB);
+  const a1 = finalTableA[0], a2 = finalTableA[1];
+  const b1 = finalTableB[0], b2 = finalTableB[1];
+  const promotedNames = [a1?.name, a2?.name, b1?.name, b2?.name].filter(Boolean);
+  updateCurrent({
+    stage: "knockout",
+    semis: {
+      m1: { id:uid(), label:"نصف النهائي 1", a:a1, b:b2, scoreA:null, scoreB:null },
+      m2: { id:uid(), label:"نصف النهائي 2", a:b1, b:a2, scoreA:null, scoreB:null },
+    },
+    tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
+    fullStandings: [...finalTableA, ...finalTableB],
+    promotedNames,
+  });
+}
+
+function updateSemiField(key, field, value) {
+  const cur = appState.current;
   const semis = cur.semis;
-
-  const updateSemi = (key, field, value) => {
-    const updated = { ...semis, [key]: { ...semis[key], [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) } };
-    updateCurrent({ semis: updated });
-  };
-
-  const semisComplete = semis.m1.scoreA != null && semis.m1.scoreB != null && semis.m2.scoreA != null && semis.m2.scoreB != null;
-
-  const goToFinal = () => {
-    const w1 = semis.m1.scoreA > semis.m1.scoreB ? semis.m1.a : semis.m1.scoreA < semis.m1.scoreB ? semis.m1.b : null;
-    const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
-    if (!w1 || !w2) return;
-    updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
-  };
-
-  const updateFinal = (field, value) => {
-    const updated = { ...cur.final, [field]: value === "" ? null : Math.max(0, parseInt(value) || 0) };
-    updateCurrent({ final: updated });
-  };
-
-  const champion =
-    cur.final && cur.final.scoreA != null && cur.final.scoreB != null
-      ? cur.final.scoreA > cur.final.scoreB
-        ? cur.final.a
-        : cur.final.scoreA < cur.final.scoreB
-        ? cur.final.b
-        : null
-      : null;
-
-  const finish = () => {
-    if (!champion) return;
-    const runnerUp = champion.id === cur.final.a.id ? cur.final.b : cur.final.a;
-    const semifinalistsOut = [
-      semis.m1.a?.id === champion.id || semis.m1.a?.id === runnerUp.id ? semis.m1.b : semis.m1.a,
-      semis.m2.a?.id === champion.id || semis.m2.a?.id === runnerUp.id ? semis.m2.b : semis.m2.a,
-    ];
-    finishTournament(champion, runnerUp, semifinalistsOut, cur.fullStandings || []);
-  };
-
-  return (
-    <div style={styles.card}>
-      <div style={styles.tournamentBadge}>{cur.name}</div>
-      <h2 style={styles.h2}>🏆 الأدوار الإقصائية</h2>
-
-      <div style={styles.twoColGroups}>
-        <SemiPanel label="نصف النهائي 1" match={semis.m1} onUpdate={(f, v) => updateSemi("m1", f, v)} />
-        <SemiPanel label="نصف النهائي 2" match={semis.m2} onUpdate={(f, v) => updateSemi("m2", f, v)} />
-      </div>
-
-      {!cur.final && (
-        <button style={{ ...styles.ctaBtn, opacity: semisComplete ? 1 : 0.5 }} disabled={!semisComplete} onClick={goToFinal}>
-          الانتقال للنهائي →
-        </button>
-      )}
-
-      {cur.final && (
-        <div style={styles.finalBox}>
-          <h3 style={styles.groupTitle}>🏁 النهائي الكبير</h3>
-          <div style={styles.matchRow}>
-            <span style={styles.matchName}>{cur.final.a.name}</span>
-            <input type="number" min="0" style={styles.scoreInput} value={cur.final.scoreA ?? ""} onChange={(e) => updateFinal("scoreA", e.target.value)} />
-            <span style={styles.vs}>-</span>
-            <input type="number" min="0" style={styles.scoreInput} value={cur.final.scoreB ?? ""} onChange={(e) => updateFinal("scoreB", e.target.value)} />
-            <span style={styles.matchName}>{cur.final.b.name}</span>
-          </div>
-          {champion && (
-            <>
-              <div style={styles.championBanner}>👑 بطل {cur.name}: {champion.name}</div>
-              <button style={styles.ctaBtn} onClick={finish}>حفظ النتيجة النهائية وأرشفة البطولة →</button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  const updated = { ...semis, [key]: { ...semis[key], [field]: parsed } };
+  updateCurrent({ semis: updated });
 }
 
-function SemiPanel({ label, match, onUpdate }) {
-  return (
-    <div style={styles.groupBox}>
-      <h3 style={styles.groupTitle}>{label}</h3>
-      <div style={styles.matchRow}>
-        <span style={styles.matchName}>{match.a?.name ?? "—"}</span>
-        <input type="number" min="0" style={styles.scoreInput} value={match.scoreA ?? ""} onChange={(e) => onUpdate("scoreA", e.target.value)} />
-        <span style={styles.vs}>-</span>
-        <input type="number" min="0" style={styles.scoreInput} value={match.scoreB ?? ""} onChange={(e) => onUpdate("scoreB", e.target.value)} />
-        <span style={styles.matchName}>{match.b?.name ?? "—"}</span>
-      </div>
-      {match.scoreA != null && match.scoreB != null && match.scoreA === match.scoreB && (
-        <div style={styles.warnNote}>⚠️ تعادل — الأدوار الإقصائية لازم يكون فيها فائز، عدّل النتيجة</div>
-      )}
-    </div>
-  );
+function goToFinal() {
+  const semis = appState.current.semis;
+  const w1 = semis.m1.scoreA > semis.m1.scoreB ? semis.m1.a : semis.m1.scoreA < semis.m1.scoreB ? semis.m1.b : null;
+  const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
+  if (!w1 || !w2) return;
+  updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
 }
 
-// ============ Historical Stats Panel ============
+function updateFinalField(field, value) {
+  const cur = appState.current;
+  const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  updateCurrent({ final: { ...cur.final, [field]: parsed } });
+}
+
+function finishKnockout() {
+  const cur = appState.current;
+  const final = cur.final;
+  const champion = final.scoreA > final.scoreB ? final.a : final.scoreA < final.scoreB ? final.b : null;
+  if (!champion) return;
+  const runnerUp = champion.id === final.a.id ? final.b : final.a;
+  const semis = cur.semis;
+  const semifinalistsOut = [
+    (semis.m1.a?.id === champion.id || semis.m1.a?.id === runnerUp.id) ? semis.m1.b : semis.m1.a,
+    (semis.m2.a?.id === champion.id || semis.m2.a?.id === runnerUp.id) ? semis.m2.b : semis.m2.a,
+  ];
+  finishTournament(champion, runnerUp, semifinalistsOut, cur.fullStandings || []);
+}
+
+function finishSingleGroup() {
+  const cur = appState.current;
+  const finalTable = standingsFor(cur.players, cur.singleMatches, []);
+  finishTournament(finalTable[0], finalTable[1], [], finalTable);
+}
+
+// ============ Historical stats ============
 function computeHistoricalStats(archive) {
   const perPlayer = {};
-
   const ensure = (name) => {
     if (!perPlayer[name]) {
-      perPlayer[name] = {
-        name,
-        titles: 0,
-        goalsScored: 0,
-        goalsConceded: 0,
-        promotions: 0,
-        runnerUps: 0,
-        finalAppearances: 0,
-        appearances: 0,
-      };
+      perPlayer[name] = { name, titles:0, goalsScored:0, goalsConceded:0, promotions:0, runnerUps:0, finalAppearances:0, appearances:0 };
     }
     return perPlayer[name];
   };
-
   archive.forEach((t) => {
-    if (t.champion) {
-      ensure(t.champion).titles += 1;
-      ensure(t.champion).finalAppearances += 1;
-    }
-    if (t.runnerUp) {
-      ensure(t.runnerUp).runnerUps += 1;
-      ensure(t.runnerUp).finalAppearances += 1;
-    }
+    if (t.champion) { ensure(t.champion).titles++; ensure(t.champion).finalAppearances++; }
+    if (t.runnerUp) { ensure(t.runnerUp).runnerUps++; ensure(t.runnerUp).finalAppearances++; }
     (t.players || []).forEach((p) => {
       const s = ensure(p.name);
-      s.goalsScored += p.gf || 0;
-      s.goalsConceded += p.ga || 0;
-      s.appearances += 1;
+      s.goalsScored += p.gf || 0; s.goalsConceded += p.ga || 0; s.appearances++;
     });
-    (t.promotedNames || []).forEach((name) => (ensure(name).promotions += 1));
+    (t.promotedNames || []).forEach((name) => ensure(name).promotions++);
   });
-
   const list = Object.values(perPlayer);
-  const topBy = (key, count = 5) => [...list].sort((a, b) => b[key] - a[key]).filter((x) => x[key] > 0).slice(0, count);
-
-  const leastPromotions = [...list]
-    .filter((x) => x.appearances >= 2)
-    .sort((a, b) => a.promotions - b.promotions || b.appearances - a.appearances)
-    .slice(0, 5);
-
+  const topBy = (key, count=5) => [...list].sort((a,b) => b[key]-a[key]).filter(x => x[key] > 0).slice(0, count);
+  const leastPromotions = [...list].filter(x => x.appearances >= 2)
+    .sort((a,b) => a.promotions - b.promotions || b.appearances - a.appearances).slice(0, 5);
   return {
     mostTitles: topBy("titles"),
     mostGoalsScored: topBy("goalsScored"),
@@ -738,138 +534,335 @@ function computeHistoricalStats(archive) {
     mostRunnerUps: topBy("runnerUps"),
     mostFinalAppearances: topBy("finalAppearances"),
     leastPromotions,
-    list,
   };
 }
 
-function StatsPanel({ archive, compact }) {
-  const stats = useMemo(() => computeHistoricalStats(archive || []), [archive]);
-
-  if (!archive || archive.length === 0) {
-    return (
-      <div style={compact ? styles.sidebarCard : styles.card}>
-        <h3 style={styles.groupTitle}>📊 التصنيفات التاريخية</h3>
-        <div style={styles.emptyNote}>ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً.</div>
-      </div>
-    );
-  }
-
-  const StatBlock = ({ title, icon, rows, valueKey, suffix }) => (
-    <div style={styles.statBlock}>
-      <div style={styles.statBlockTitle}>{icon} {title}</div>
-      {rows.length === 0 ? (
-        <div style={styles.emptyNoteSmall}>لا توجد بيانات بعد</div>
-      ) : (
-        rows.map((r, i) => (
-          <div key={r.name} style={styles.statRow}>
-            <span style={styles.statRank}>{i + 1}</span>
-            <span style={{ flex: 1 }}>{r.name}</span>
-            <span style={styles.statValue}>{r[valueKey]} {suffix}</span>
-          </div>
-        ))
-      )}
-    </div>
-  );
-
-  return (
-    <div style={compact ? styles.sidebarCard : styles.card}>
-      <h3 style={styles.groupTitle}>📊 التصنيفات التاريخية ({archive.length} بطولة مكتملة)</h3>
-      <StatBlock title="الأكثر تتويجاً" icon="👑" rows={stats.mostTitles} valueKey="titles" suffix="لقب" />
-      <StatBlock title="الأكثر تسجيلاً للأهداف" icon="⚽" rows={stats.mostGoalsScored} valueKey="goalsScored" suffix="هدف" />
-      <StatBlock title="الأكثر تلقياً للأهداف" icon="🥅" rows={stats.mostGoalsConceded} valueKey="goalsConceded" suffix="هدف" />
-      <StatBlock title="الأكثر وصافة" icon="🥈" rows={stats.mostRunnerUps} valueKey="runnerUps" suffix="مرة" />
-      <StatBlock title="الأكثر صعوداً للنهائي" icon="🏁" rows={stats.mostFinalAppearances} valueKey="finalAppearances" suffix="مرة" />
-      <StatBlock title="الأقل صعوداً من مجموعته" icon="📉" rows={stats.leastPromotions} valueKey="promotions" suffix="مرة صعود" />
-
-      {!compact && (
-        <>
-          <div style={styles.archiveDivider} />
-          <h3 style={styles.groupTitle}>🗂️ أرشيف البطولات</h3>
-          {archive.slice().reverse().map((t) => (
-            <div key={t.id} style={styles.archiveRow}>
-              <strong>{t.name}</strong> — 👑 {t.champion || "—"} | 🥈 {t.runnerUp || "—"}
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  );
+// ============ Render functions ============
+function statBlockHtml(title, icon, rows, valueKey, suffix) {
+  const rowsHtml = rows.length === 0
+    ? `<div class="empty-note-sm">لا توجد بيانات بعد</div>`
+    : rows.map((r,i) => `
+        <div class="stat-row">
+          <span class="stat-rank">${i+1}</span>
+          <span style="flex:1">${escapeHtml(r.name)}</span>
+          <span class="stat-value">${r[valueKey]} ${suffix}</span>
+        </div>`).join("");
+  return `<div class="stat-block"><div class="stat-block-title">${icon} ${title}</div>${rowsHtml}</div>`;
 }
 
-// ============ Fonts & Styles ============
-const fontImport = `
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
-* { box-sizing: border-box; font-family: 'Tajawal', sans-serif; }
-input[type=number]::-webkit-inner-spin-button { opacity: 1; }
-`;
+function statsPanelHtml(archive, compact) {
+  const wrapClass = compact ? "sidebar-card" : "card";
+  if (!archive || archive.length === 0) {
+    return `<div class="${wrapClass}">
+      <h3 class="group-title">📊 التصنيفات التاريخية</h3>
+      <div class="empty-note">ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً.</div>
+    </div>`;
+  }
+  const stats = computeHistoricalStats(archive);
+  let html = `<div class="${wrapClass}">
+    <h3 class="group-title">📊 التصنيفات التاريخية (${archive.length} بطولة مكتملة)</h3>
+    ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
+    ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
+    ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
+    ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
+    ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
+    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"promotions","مرة صعود")}`;
+  if (!compact) {
+    html += `<div class="archive-divider"></div><h3 class="group-title">🗂️ أرشيف البطولات</h3>`;
+    html += archive.slice().reverse().map(t => `
+      <div class="archive-row"><strong>${escapeHtml(t.name)}</strong> — 👑 ${escapeHtml(t.champion||"—")} | 🥈 ${escapeHtml(t.runnerUp||"—")}</div>
+    `).join("");
+  }
+  html += `</div>`;
+  return html;
+}
 
-const styles = {
-  page: { direction: "rtl", minHeight: "100vh", background: "linear-gradient(180deg, #0C2E22 0%, #0F3D2E 55%, #0C2E22 100%)", color: "#F4F1EA", padding: "24px 16px 80px", position: "relative", overflow: "hidden" },
-  loadingBox: { textAlign: "center", padding: 60, color: "rgba(244,241,234,0.6)" },
-  floodlightGlow: { position: "absolute", top: -120, left: "50%", transform: "translateX(-50%)", width: 500, height: 500, background: "radial-gradient(circle, rgba(232,184,75,0.18) 0%, rgba(232,184,75,0) 70%)", pointerEvents: "none" },
-  header: { display: "flex", alignItems: "center", gap: 14, maxWidth: 1040, margin: "0 auto 16px", position: "relative" },
-  headerBadge: { width: 52, height: 52, borderRadius: "50%", background: "#E8B84B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: "0 0 0 3px rgba(232,184,75,0.25)" },
-  title: { margin: 0, fontSize: 26, fontWeight: 900, letterSpacing: "-0.5px" },
-  subtitle: { margin: "2px 0 0", fontSize: 13, color: "rgba(244,241,234,0.6)" },
-  tabRow: { maxWidth: 1040, margin: "0 auto 20px", display: "flex", gap: 8 },
-  tabBtn: { padding: "10px 18px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "rgba(244,241,234,0.7)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" },
-  tabBtnActive: { background: "rgba(232,184,75,0.18)", borderColor: "#E8B84B", color: "#E8B84B" },
-  layout: { maxWidth: 1040, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" },
-  main: { minWidth: 0 },
-  sidebar: { position: "sticky", top: 16 },
-  card: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, padding: "22px 20px", backdropFilter: "blur(6px)" },
-  sidebarCard: { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "16px", fontSize: 13, maxHeight: "calc(100vh - 140px)", overflowY: "auto" },
-  tournamentBadge: { display: "inline-block", background: "linear-gradient(135deg, rgba(232,184,75,0.25), rgba(232,184,75,0.1))", color: "#E8B84B", fontWeight: 900, fontSize: 13.5, borderRadius: 999, padding: "6px 16px", marginBottom: 14, border: "1px solid rgba(232,184,75,0.35)" },
-  h2: { margin: "0 0 6px", fontSize: 19, fontWeight: 800 },
-  hint: { margin: "0 0 18px", fontSize: 13.5, color: "rgba(244,241,234,0.65)", lineHeight: 1.6 },
-  inputRow: { display: "flex", gap: 8, marginBottom: 16 },
-  input: { flex: 1, padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "#F4F1EA", fontSize: 14.5, outline: "none" },
-  primaryBtn: { padding: "12px 18px", borderRadius: 12, border: "none", background: "#E8B84B", color: "#0F3D2E", fontWeight: 800, fontSize: 14, cursor: "pointer" },
-  playerGrid: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, maxHeight: 280, overflowY: "auto" },
-  playerChip: { display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "9px 12px", fontSize: 14 },
-  playerNum: { background: "#1F5D45", color: "#F4F1EA", borderRadius: "50%", width: 22, height: 22, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  chipRemove: { background: "none", border: "none", color: "#C0392B", fontSize: 15, cursor: "pointer", padding: "2px 6px" },
-  emptyNote: { fontSize: 13, color: "rgba(244,241,234,0.45)", padding: "8px 0", textAlign: "center" },
-  emptyNoteSmall: { fontSize: 11.5, color: "rgba(244,241,234,0.4)", padding: "4px 0" },
-  countBadge: { display: "inline-block", background: "rgba(232,184,75,0.15)", color: "#E8B84B", fontWeight: 700, fontSize: 13, borderRadius: 999, padding: "5px 14px", marginBottom: 18 },
-  modeSwitch: { display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" },
-  modeBtn: { flex: "1 1 160px", padding: "12px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.04)", color: "rgba(244,241,234,0.7)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" },
-  modeBtnActive: { background: "rgba(232,184,75,0.18)", borderColor: "#E8B84B", color: "#E8B84B" },
-  ctaBtn: { width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #E8B84B, #D9A62E)", color: "#0F3D2E", fontWeight: 900, fontSize: 15, cursor: "pointer", marginTop: 10 },
-  wheelArea: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, marginBottom: 20 },
-  wheelWrap: { position: "relative", width: 240, height: 240, display: "flex", alignItems: "center", justifyContent: "center" },
-  pointer: { position: "absolute", top: -14, fontSize: 26, color: "#C0392B", zIndex: 3, filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.4))" },
-  wheel: { width: 220, height: 220, borderRadius: "50%", position: "relative", border: "5px solid #F4F1EA", boxShadow: "0 0 0 3px #0F3D2E, 0 10px 30px rgba(0,0,0,0.4)" },
-  wheelLabel: { position: "absolute", top: "50%", left: "50%", transformOrigin: "0 0", fontSize: 10.5, fontWeight: 800, color: "#0F3D2E", width: 90, textAlign: "center", marginLeft: -45, marginTop: -6 },
-  wheelHub: { position: "absolute", width: 44, height: 44, borderRadius: "50%", background: "#0F3D2E", border: "3px solid #F4F1EA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, zIndex: 2 },
-  spinBtn: { padding: "13px 32px", borderRadius: 999, border: "none", background: "#E8B84B", color: "#0F3D2E", fontWeight: 900, fontSize: 15, cursor: "pointer" },
-  winnerBanner: { background: "rgba(232,184,75,0.15)", color: "#E8B84B", fontWeight: 800, fontSize: 16, padding: "8px 20px", borderRadius: 12 },
-  twoColGroups: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 },
-  groupBox: { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "14px" },
-  groupTitle: { margin: "0 0 10px", fontSize: 14.5, fontWeight: 800, color: "#E8B84B" },
-  groupRow: { fontSize: 13.5, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" },
-  matchList: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 },
-  matchRow: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px" },
-  matchName: { flex: 1, textAlign: "center", fontWeight: 600 },
-  matchNameSmall: { flex: 1, textAlign: "center", fontSize: 11, color: "rgba(244,241,234,0.6)" },
-  scoreInput: { width: 38, padding: "5px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", color: "#F4F1EA", textAlign: "center", fontSize: 13 },
-  redInput: { width: 32, padding: "4px", borderRadius: 6, border: "1px solid rgba(192,57,43,0.4)", background: "rgba(192,57,43,0.1)", color: "#F4F1EA", textAlign: "center", fontSize: 12 },
-  redCardHint: { fontSize: 11, color: "rgba(244,241,234,0.45)", margin: "4px 0" },
-  redRow: { display: "flex", alignItems: "center", gap: 6, background: "rgba(192,57,43,0.06)", borderRadius: 8, padding: "6px 8px" },
-  vs: { fontWeight: 700, color: "rgba(244,241,234,0.5)" },
-  vsSmall: { fontWeight: 700, color: "rgba(244,241,234,0.3)", fontSize: 11 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 },
-  th: { padding: "6px 3px", color: "rgba(244,241,234,0.5)", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.1)" },
-  td: { padding: "6px 3px", textAlign: "center", borderBottom: "1px solid rgba(255,255,255,0.06)" },
-  qualifyRow: { background: "rgba(232,184,75,0.1)" },
-  finalBox: { background: "rgba(232,184,75,0.08)", border: "1px solid rgba(232,184,75,0.3)", borderRadius: 14, padding: 16 },
-  championBanner: { marginTop: 14, textAlign: "center", fontSize: 18, fontWeight: 900, color: "#E8B84B", padding: "12px", background: "rgba(232,184,75,0.12)", borderRadius: 12, marginBottom: 12 },
-  warnNote: { fontSize: 12, color: "#C0392B", marginTop: 6, textAlign: "center" },
-  statBlock: { marginBottom: 16 },
-  statBlockTitle: { fontSize: 13, fontWeight: 800, color: "#E8B84B", marginBottom: 6 },
-  statRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" },
-  statRank: { background: "rgba(255,255,255,0.08)", borderRadius: "50%", width: 18, height: 18, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  statValue: { fontWeight: 800, color: "#E8B84B" },
-  archiveDivider: { height: 1, background: "rgba(255,255,255,0.1)", margin: "18px 0" },
-  archiveRow: { fontSize: 12.5, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" },
+function registerStageHtml() {
+  const upcomingName = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
+  const players = registerDraft.players;
+  const groupMode = registerDraft.groupMode;
+  const minNeeded = groupMode === "two" ? 3 : 2;
+  const playersHtml = players.length === 0
+    ? `<div class="empty-note">لسا ما فيه أسماء مسجلة</div>`
+    : players.map((p,i) => `
+        <div class="player-chip">
+          <span class="player-num">${i+1}</span>
+          <span style="flex:1">${escapeHtml(p.name)}</span>
+          <button class="chip-remove" onclick="removePlayer('${p.id}')">✕</button>
+        </div>`).join("");
+
+  return `<div class="card">
+    <div class="tournament-badge">البطولة القادمة: ${upcomingName}</div>
+    <h2>📋 تسجيل المشاركين</h2>
+    <p class="hint">أدخل اسم كل لاعب حاضر هالأسبوع، وبعدها اختر طريقة اللعب.</p>
+    <div class="input-row">
+      <input class="text-input" id="nameInput" value="${escapeHtml(registerDraft.nameInput)}" placeholder="اسم اللاعب..." onkeydown="if(event.key==='Enter') addPlayer()">
+      <button class="primary-btn" onclick="addPlayer()">+ إضافة</button>
+    </div>
+    <div class="player-grid">${playersHtml}</div>
+    <div class="count-badge">عدد المشاركين: ${players.length}</div>
+    <div class="mode-switch">
+      <button class="mode-btn ${groupMode==='two'?'active':''}" onclick="setGroupMode('two')">🎡 مجموعتين (قرعة دوارة)</button>
+      <button class="mode-btn ${groupMode==='one'?'active':''}" onclick="setGroupMode('one')">🔀 مجموعة واحدة (بدون قرعة)</button>
+    </div>
+    <button class="cta-btn" ${players.length < minNeeded ? "disabled" : ""} onclick="startNewTournament()">
+      ${groupMode==='two' ? 'تجهيز القرعة الدوارة →' : 'إنشاء جدول المباريات →'}
+    </button>
+  </div>`;
+}
+
+function wheelStageHtml() {
+  const cur = appState.current;
+  const players = cur.players;
+  const remaining = cur.remaining;
+  const wheelOrder = cur.wheelOrder;
+  const halfSize = Math.ceil(players.length / 2);
+  const groupA = wheelOrder.slice(0, halfSize);
+  const groupB = wheelOrder.slice(halfSize);
+  const colors = ["#E8B84B","#1F5D45","#C0392B","#F4F1EA","#2C7A5B","#D9A62E"];
+  const n = remaining.length;
+  const wheelComplete = remaining.length === 0 && wheelOrder.length === players.length && players.length > 0;
+
+  const labelsHtml = remaining.map((p,i) => {
+    const segAngle = 360/n;
+    const angle = i*segAngle + segAngle/2;
+    return `<div class="wheel-label" style="transform: rotate(${angle}deg) translate(0,-108px) rotate(${-angle}deg)">${escapeHtml(p.name)}</div>`;
+  }).join("");
+
+  const groupAHtml = groupA.length === 0 ? `<div class="empty-note">—</div>`
+    : groupA.map((p,i) => `<div class="group-row">${i+1}. ${escapeHtml(p.name)}</div>`).join("");
+  const groupBHtml = groupB.length === 0 ? `<div class="empty-note">—</div>`
+    : groupB.map((p,i) => `<div class="group-row">${i+1}. ${escapeHtml(p.name)}</div>`).join("");
+
+  return `<div class="card">
+    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
+    <h2>🎡 القرعة الدوارة</h2>
+    <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين.</p>
+    <div class="wheel-area">
+      <div class="wheel-wrap">
+        <div class="pointer">▼</div>
+        <div class="wheel" style="transform: rotate(${wheelUi.rotation}deg); background: ${n>0?conicGradient(n,colors):'#12321f'}">
+          ${labelsHtml}
+        </div>
+        <div class="wheel-hub">⚽</div>
+      </div>
+      <button class="spin-btn" ${wheelUi.spinning || n===0 ? "disabled" : ""} onclick="spinWheel()">
+        ${wheelUi.spinning ? "...تدور" : (n===0 ? "اكتملت القرعة" : "ابدأ الدوران")}
+      </button>
+      ${wheelUi.lastWinner && !wheelUi.spinning ? `<div class="winner-banner">🎉 ${escapeHtml(wheelUi.lastWinner.name)}</div>` : ""}
+    </div>
+    <div class="two-col">
+      <div class="group-box"><h3 class="group-title">المجموعة الأولى</h3>${groupAHtml}</div>
+      <div class="group-box"><h3 class="group-title">المجموعة الثانية</h3>${groupBHtml}</div>
+    </div>
+    ${wheelComplete ? `<button class="cta-btn" onclick="proceedToGroups()">الانتقال لجدول المباريات →</button>` : ""}
+  </div>`;
+}
+
+function scoreTableHtml(table) {
+  const rows = table.map((t,i) => `
+    <tr class="${i<2?'qualify-row':''}">
+      <td>${i+1}</td>
+      <td style="text-align:right">${escapeHtml(t.name)}</td>
+      <td>${t.played}</td>
+      <td>${t.w}</td>
+      <td>${t.l}</td>
+      <td>${t.gd>0?'+'+t.gd:t.gd}</td>
+      <td>${t.redCards}</td>
+      <td style="font-weight:700">${t.pts}</td>
+    </tr>`).join("");
+  return `<table class="score-table">
+    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>خ</th><th>فأ</th><th>🟥</th><th>نقاط</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function groupPanelHtml(title, matches, whichKey, table) {
+  const matchRows = matches.map(m => `
+    <div class="match-row">
+      <span class="match-name">${escapeHtml(m.a.name)}</span>
+      <input type="number" min="0" class="score-input" value="${m.scoreA ?? ''}" onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)">
+      <span class="vs">-</span>
+      <input type="number" min="0" class="score-input" value="${m.scoreB ?? ''}" onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)">
+      <span class="match-name">${escapeHtml(m.b.name)}</span>
+    </div>`).join("");
+
+  const redRows = matches.map(m => `
+    <div class="red-row">
+      <span class="match-name-sm">${escapeHtml(m.a.name)}</span>
+      <input type="number" min="0" class="red-input" value="${m.redA ?? 0}" onchange="updateMatchField('${whichKey}','${m.id}','redA',this.value)">
+      <span class="vs-sm">|</span>
+      <input type="number" min="0" class="red-input" value="${m.redB ?? 0}" onchange="updateMatchField('${whichKey}','${m.id}','redB',this.value)">
+      <span class="match-name-sm">${escapeHtml(m.b.name)}</span>
+    </div>`).join("");
+
+  return `<div class="group-box">
+    <h3 class="group-title">${title}</h3>
+    <div class="match-list">${matchRows}</div>
+    <div class="red-card-hint">🟥 بطاقات حمراء (اختياري لكل مباراة)</div>
+    <div class="match-list">${redRows}</div>
+    ${scoreTableHtml(table)}
+  </div>`;
+}
+
+function groupsStageHtml() {
+  const cur = appState.current;
+  const tableA = standingsFor(cur.groupA, cur.matchesA, []);
+  const tableB = standingsFor(cur.groupB, cur.matchesB, []);
+  const allAPlayed = cur.matchesA.length > 0 && cur.matchesA.every(m => m.scoreA != null && m.scoreB != null);
+  const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every(m => m.scoreA != null && m.scoreB != null);
+
+  return `<div class="card">
+    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
+    <h2>⚔️ دوري المجموعات</h2>
+    <p class="hint">أدخل نتيجة كل مباراة والبطاقات الحمراء. ترتيب الصعود: نقاط ← أهداف مسجلة ← أقل بطاقات حمراء ← قرعة عشوائية عند التعادل التام.</p>
+    <div class="two-col">
+      ${groupPanelHtml("المجموعة الأولى", cur.matchesA, "A", tableA)}
+      ${groupPanelHtml("المجموعة الثانية", cur.matchesB, "B", tableB)}
+    </div>
+    <button class="cta-btn" ${!(allAPlayed && allBPlayed) ? "disabled" : ""} onclick="goToKnockout()">الانتقال لنصف النهائي →</button>
+    ${!(allAPlayed && allBPlayed) ? `<div class="empty-note">أكمل جميع نتائج المجموعتين للمتابعة</div>` : ""}
+  </div>`;
+}
+
+function singleGroupStageHtml() {
+  const cur = appState.current;
+  const table = standingsFor(cur.players, cur.singleMatches, []);
+  const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every(m => m.scoreA != null && m.scoreB != null);
+  return `<div class="card">
+    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
+    <h2>🔀 مجموعة واحدة — الكل ضد الكل</h2>
+    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. أدخل النتائج والبطاقات الحمراء يدوياً.</p>
+    ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table)}
+    <button class="cta-btn" ${!allPlayed ? "disabled" : ""} onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل →</button>
+  </div>`;
+}
+
+function semiPanelHtml(label, match, key) {
+  const tieWarn = (match.scoreA != null && match.scoreB != null && match.scoreA === match.scoreB)
+    ? `<div class="warn-note">⚠️ تعادل — الأدوار الإقصائية لازم يكون فيها فائز، عدّل النتيجة</div>` : "";
+  return `<div class="group-box">
+    <h3 class="group-title">${label}</h3>
+    <div class="match-row">
+      <span class="match-name">${escapeHtml(match.a?.name ?? "—")}</span>
+      <input type="number" min="0" class="score-input" value="${match.scoreA ?? ''}" onchange="updateSemiField('${key}','scoreA',this.value)">
+      <span class="vs">-</span>
+      <input type="number" min="0" class="score-input" value="${match.scoreB ?? ''}" onchange="updateSemiField('${key}','scoreB',this.value)">
+      <span class="match-name">${escapeHtml(match.b?.name ?? "—")}</span>
+    </div>
+    ${tieWarn}
+  </div>`;
+}
+
+function knockoutStageHtml() {
+  const cur = appState.current;
+  const semis = cur.semis;
+  const semisComplete = semis.m1.scoreA != null && semis.m1.scoreB != null && semis.m2.scoreA != null && semis.m2.scoreB != null;
+  const final = cur.final;
+  const champion = final && final.scoreA != null && final.scoreB != null
+    ? (final.scoreA > final.scoreB ? final.a : final.scoreA < final.scoreB ? final.b : null) : null;
+
+  let finalHtml = "";
+  if (!final) {
+    finalHtml = `<button class="cta-btn" ${!semisComplete ? "disabled" : ""} onclick="goToFinal()">الانتقال للنهائي →</button>`;
+  } else {
+    finalHtml = `<div class="final-box">
+      <h3 class="group-title">🏁 النهائي الكبير</h3>
+      <div class="match-row">
+        <span class="match-name">${escapeHtml(final.a.name)}</span>
+        <input type="number" min="0" class="score-input" value="${final.scoreA ?? ''}" onchange="updateFinalField('scoreA',this.value)">
+        <span class="vs">-</span>
+        <input type="number" min="0" class="score-input" value="${final.scoreB ?? ''}" onchange="updateFinalField('scoreB',this.value)">
+        <span class="match-name">${escapeHtml(final.b.name)}</span>
+      </div>
+      ${champion ? `
+        <div class="champion-banner">👑 بطل ${escapeHtml(cur.name)}: ${escapeHtml(champion.name)}</div>
+        <button class="cta-btn" onclick="finishKnockout()">حفظ النتيجة النهائية وأرشفة البطولة →</button>
+      ` : ""}
+    </div>`;
+  }
+
+  return `<div class="card">
+    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
+    <h2>🏆 الأدوار الإقصائية</h2>
+    <div class="two-col">
+      ${semiPanelHtml("نصف النهائي 1", semis.m1, "m1")}
+      ${semiPanelHtml("نصف النهائي 2", semis.m2, "m2")}
+    </div>
+    ${finalHtml}
+  </div>`;
+}
+
+function tournamentFlowHtml() {
+  const cur = appState.current;
+  if (!cur) return registerStageHtml();
+  if (cur.stage === "wheel") return wheelStageHtml();
+  if (cur.stage === "groups") return groupsStageHtml();
+  if (cur.stage === "single") return singleGroupStageHtml();
+  if (cur.stage === "knockout") return knockoutStageHtml();
+  return "";
+}
+
+function render() {
+  if (!loaded) {
+    app.innerHTML = `<div class="loading-box">جارِ تحميل بيانات الدوري المشتركة...</div>`;
+    return;
+  }
+  const headerSubtitle = appState.current ? escapeHtml(appState.current.name) : "بانتظار بطولة جديدة";
+  app.innerHTML = `
+    <header>
+      <div class="header-badge">⚽</div>
+      <div style="flex:1">
+        <h1>دوري أبطال العزبة</h1>
+        <p class="subtitle">${headerSubtitle} — بيانات مباشرة لكل المستخدمين</p>
+      </div>
+    </header>
+    <div class="tab-row">
+      <button class="tab-btn ${view==='tournament'?'active':''}" onclick="setView('tournament')">🏆 البطولة الحالية</button>
+      <button class="tab-btn ${view==='stats'?'active':''}" onclick="setView('stats')">📊 التصنيفات التاريخية</button>
+    </div>
+    <div class="layout">
+      <main>${view === "tournament" ? tournamentFlowHtml() : statsPanelHtml(appState.archive, false)}</main>
+      ${view === "tournament" ? `<aside class="sidebar">${statsPanelHtml(appState.archive, true)}</aside>` : ""}
+    </div>
+  `;
+}
+
+// ============ UI event handlers exposed globally ============
+window.addPlayer = function() {
+  const input = document.getElementById("nameInput");
+  const name = (input.value || "").trim();
+  if (!name) return;
+  registerDraft.players.push({ id: uid(), name });
+  registerDraft.nameInput = "";
+  render();
+  const newInput = document.getElementById("nameInput");
+  if (newInput) newInput.focus();
 };
+window.removePlayer = function(id) {
+  registerDraft.players = registerDraft.players.filter(p => p.id !== id);
+  render();
+};
+window.setGroupMode = function(mode) {
+  registerDraft.groupMode = mode;
+  render();
+};
+window.setView = function(v) {
+  view = v;
+  render();
+};
+window.startNewTournament = startNewTournament;
+window.spinWheel = spinWheel;
+window.proceedToGroups = proceedToGroups;
+window.updateMatchField = updateMatchField;
+window.goToKnockout = goToKnockout;
+window.updateSemiField = updateSemiField;
+window.goToFinal = goToFinal;
+window.updateFinalField = updateFinalField;
+window.finishKnockout = finishKnockout;
+window.finishSingleGroup = finishSingleGroup;
+
+init();
+</script>
+</body>
+</html>

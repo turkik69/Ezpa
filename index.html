@@ -102,21 +102,36 @@
 
   .card {
     background: linear-gradient(180deg, rgba(242,238,227,0.045), rgba(242,238,227,0.02));
-    border:1px solid rgba(242,238,227,0.1);
-    border-radius:10px; padding:24px 22px;
-    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.18);
+    border:1.5px solid rgba(242,238,227,0.14);
+    border-radius:14px; padding:26px 24px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px rgba(0,0,0,0.22);
   }
+  /* Section-colored card variants — each major area of the app gets its own
+     accent border/glow so screens are visually distinct at a glance. */
+  .card.theme-members   { border-color: rgba(168,124,226,0.45); box-shadow: 0 0 0 1px rgba(168,124,226,0.12) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(168,124,226,0.08); }
+  .card.theme-gold      { border-color: rgba(201,162,75,0.5);   box-shadow: 0 0 0 1px rgba(201,162,75,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(201,162,75,0.1); }
+  .card.theme-groups    { border-color: rgba(90,190,140,0.5);   box-shadow: 0 0 0 1px rgba(90,190,140,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(90,190,140,0.1); }
+  .card.theme-knockout  { border-color: rgba(90,150,230,0.5);   box-shadow: 0 0 0 1px rgba(90,150,230,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(90,150,230,0.1); }
+  .card.theme-stats     { border-color: rgba(200,200,210,0.4);  box-shadow: 0 0 0 1px rgba(200,200,210,0.12) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(200,200,210,0.08); }
+
+  .section-icon-title {
+    display:flex; align-items:center; gap:10px; font-size:19px; font-weight:800;
+    margin-bottom:7px; color:#F2EEE3;
+  }
+  .section-icon-title .icon { font-size:22px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
+
   .sidebar-card {
     background: linear-gradient(180deg, rgba(242,238,227,0.035), rgba(242,238,227,0.015));
-    border:1px solid rgba(242,238,227,0.1);
-    border-radius:10px; padding:18px; font-size:13px;
+    border:1.5px solid rgba(200,200,210,0.35);
+    border-radius:14px; padding:20px; font-size:13px;
+    box-shadow: 0 0 0 1px rgba(200,200,210,0.1) inset, 0 8px 22px rgba(0,0,0,0.2);
   }
   .sidebar { position:sticky; top:16px; }
 
   .tournament-badge {
     display:inline-flex; align-items:center; gap:6px;
     background: rgba(201,162,75,0.12); color:#E4C06E; font-weight:800; font-size:12.5px;
-    border-radius:6px; padding:6px 14px; margin-bottom:16px; border:1px solid rgba(201,162,75,0.3);
+    border-radius:8px; padding:7px 16px; margin-bottom:18px; border:1.5px solid rgba(201,162,75,0.4);
     letter-spacing:0.2px;
   }
   h2 { font-size:19px; font-weight:800; margin-bottom:7px; color:#F2EEE3; }
@@ -204,13 +219,15 @@
     padding:9px 22px; border-radius:8px; border:1px solid rgba(201,162,75,0.3);
   }
 
-  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
   @media (max-width: 560px) { .two-col { grid-template-columns:1fr; } }
 
   .group-box {
-    background: rgba(242,238,227,0.03); border:1px solid rgba(242,238,227,0.1);
-    border-radius:8px; padding:16px;
+    background: rgba(242,238,227,0.03); border:1.5px solid rgba(242,238,227,0.12);
+    border-radius:12px; padding:18px;
   }
+  .group-box.box-a { border-color: rgba(90,190,140,0.4); box-shadow: 0 0 16px rgba(90,190,140,0.06); }
+  .group-box.box-b { border-color: rgba(90,150,230,0.4); box-shadow: 0 0 16px rgba(90,150,230,0.06); }
   .group-title {
     font-size:13.5px; font-weight:800; color:#E4C06E; margin-bottom:12px;
     text-transform: uppercase; letter-spacing:0.4px;
@@ -1121,8 +1138,8 @@ function membersStageHtml() {
       ${m.is_core ? "" : `<button class="member-remove-btn" onclick="removeMember('${m.id}')" title="حذف العضو">✕</button>`}
     </div>`;
 
-  return `<div class="card">
-    <h2>قائمة الأعضاء والأندية</h2>
+  return `<div class="card theme-members">
+    <div class="section-icon-title"><span class="icon">👥</span>قائمة الأعضاء والأندية</div>
     <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه)، وينتقل اسمك لقائمة المؤكدين. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
 
     <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
@@ -1186,9 +1203,9 @@ function registerStageHtml() {
       </div>`;
   }
 
-  return `<div class="card">
-    <div class="tournament-badge">البطولة القادمة: ${upcomingName}</div>
-    <h2>بدء البطولة</h2>
+  return `<div class="card theme-gold">
+    <div class="tournament-badge">🏆 البطولة القادمة: ${upcomingName}</div>
+    <div class="section-icon-title"><span class="icon">🏁</span>بدء البطولة</div>
     <p class="hint">المشاركون هنا هم فقط من أكّدوا حضورهم من "قائمة الأعضاء". تقدرون تلعبون أكثر من بطولة بنفس اليوم بنفس المؤكدين — التأكيدات ما تتصفر إلا لما تضغطون "إنهاء يوم اللعب" من صفحة الأعضاء.</p>
 
     <div class="player-grid">${confirmedListHtml}</div>
@@ -1231,9 +1248,9 @@ function wheelStageHtml() {
   const groupBHtml = groupB.length === 0 ? `<div class="empty-note">—</div>`
     : groupB.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${escapeHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
 
-  return `<div class="card">
-    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
-    <h2>القرعة الدوارة</h2>
+  return `<div class="card theme-gold">
+    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="section-icon-title"><span class="icon">🎡</span>القرعة الدوارة</div>
     <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين. بمجرد ما تكتمل المجموعة الأولى، الباقين ينتقلون تلقائياً للمجموعة الثانية بدون الحاجة لإكمال القرعة للجميع.</p>
     <div class="wheel-area">
       <div class="wheel-wrap">
@@ -1284,7 +1301,8 @@ function groupPanelHtml(title, matches, whichKey, table) {
       <span class="match-name">${escapeHtml(m.b.name)}</span>
     </div>`).join("");
 
-  return `<div class="group-box">
+  const boxClass = whichKey === "A" ? "box-a" : whichKey === "B" ? "box-b" : "";
+  return `<div class="group-box ${boxClass}">
     <h3 class="group-title">${title}</h3>
     <div class="match-list">${matchRows}</div>
     ${scoreTableHtml(table)}
@@ -1298,13 +1316,13 @@ function groupsStageHtml() {
   const allAPlayed = cur.matchesA.length > 0 && cur.matchesA.every(m => m.scoreA != null && m.scoreB != null);
   const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every(m => m.scoreA != null && m.scoreB != null);
 
-  return `<div class="card">
-    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
-    <h2>دوري المجموعات</h2>
+  return `<div class="card theme-groups">
+    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="section-icon-title"><span class="icon">⚔️</span>دوري المجموعات</div>
     <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
     <div class="two-col">
-      ${groupPanelHtml("المجموعة الأولى", cur.matchesA, "A", tableA)}
-      ${groupPanelHtml("المجموعة الثانية", cur.matchesB, "B", tableB)}
+      ${groupPanelHtml("المجموعة الأولى 🟢", cur.matchesA, "A", tableA)}
+      ${groupPanelHtml("المجموعة الثانية 🔵", cur.matchesB, "B", tableB)}
     </div>
     <button class="cta-btn" ${!(allAPlayed && allBPlayed) ? "disabled" : ""} onclick="goToKnockout()">الانتقال لنصف النهائي ←</button>
     ${!(allAPlayed && allBPlayed) ? `<div class="empty-note">أكمل جميع نتائج المجموعتين للمتابعة</div>` : ""}
@@ -1315,9 +1333,9 @@ function singleGroupStageHtml() {
   const cur = appState.current;
   const table = standingsFor(cur.players, cur.singleMatches, []);
   const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every(m => m.scoreA != null && m.scoreB != null);
-  return `<div class="card">
-    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
-    <h2>مجموعة واحدة — الكل ضد الكل</h2>
+  return `<div class="card theme-groups">
+    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="section-icon-title"><span class="icon">🔀</span>مجموعة واحدة — الكل ضد الكل</div>
     <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. اختر النتائج من القوائم.</p>
     ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table)}
     <button class="cta-btn" ${!allPlayed ? "disabled" : ""} onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button>
@@ -1368,9 +1386,9 @@ function knockoutStageHtml() {
     </div>`;
   }
 
-  return `<div class="card">
-    <div class="tournament-badge">${escapeHtml(cur.name)}</div>
-    <h2>الأدوار الإقصائية</h2>
+  return `<div class="card theme-knockout">
+    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="section-icon-title"><span class="icon">🥇</span>الأدوار الإقصائية</div>
     <div class="two-col">
       ${semiPanelHtml("نصف النهائي 1", semis.m1, "m1")}
       ${semiPanelHtml("نصف النهائي 2", semis.m2, "m2")}
@@ -1408,28 +1426,28 @@ function statBlockHtml(title, icon, rows, valueKey, suffix) {
           <span style="flex:1">${escapeHtml(r.name)}</span>
           <span class="stat-value">${r[valueKey]} ${suffix}</span>
         </div>`).join("");
-  return `<div class="stat-block"><div class="stat-block-title">${title}</div>${rowsHtml}</div>`;
+  return `<div class="stat-block"><div class="stat-block-title">${icon} ${title}</div>${rowsHtml}</div>`;
 }
 
 function statsPanelHtml(archive, compact) {
-  const wrapClass = compact ? "sidebar-card" : "card";
+  const wrapClass = compact ? "sidebar-card" : "card theme-stats";
   if (!archive || archive.length === 0) {
     return `<div class="${wrapClass}">
-      <h3 class="group-title">التصنيفات التاريخية</h3>
+      <div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية</div>
       <div class="empty-note">ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً.</div>
     </div>`;
   }
   const stats = computeHistoricalStats(archive);
   let html = `<div class="${wrapClass}">
-    <h3 class="group-title">التصنيفات التاريخية (${archive.length} بطولة مكتملة)</h3>
-    ${statBlockHtml("الأكثر تتويجاً",'',stats.mostTitles,"titles","لقب")}
-    ${statBlockHtml("الأكثر تسجيلاً للأهداف",'',stats.mostGoalsScored,"goalsScored","هدف")}
-    ${statBlockHtml("الأكثر تلقياً للأهداف",'',stats.mostGoalsConceded,"goalsConceded","هدف")}
-    ${statBlockHtml("الأكثر وصافة",'',stats.mostRunnerUps,"runnerUps","مرة")}
-    ${statBlockHtml("الأكثر صعوداً للنهائي",'',stats.mostFinalAppearances,"finalAppearances","مرة")}
-    ${statBlockHtml("الأقل صعوداً من مجموعته",'',stats.leastPromotions,"promotions","مرة صعود")}`;
+    ${compact ? `<h3 class="group-title">التصنيفات التاريخية (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية (${archive.length} بطولة مكتملة)</div>`}
+    ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
+    ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
+    ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
+    ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
+    ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
+    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"promotions","مرة صعود")}`;
   if (!compact) {
-    html += `<div class="archive-divider"></div><h3 class="group-title">أرشيف البطولات</h3>
+    html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon">🗂️</span>أرشيف البطولات</div>
       <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
     html += archive.slice().reverse().map(t => `
       <div class="archive-row" style="display:flex; align-items:center; gap:10px;">

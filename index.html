@@ -62,7 +62,7 @@
   }
 
   .topbar {
-    max-width: 1440px; margin: 0 auto 14px; display:flex; align-items:center; gap:10px;
+    max-width: 1440px; margin: 0 auto 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   .back-btn {
     display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:10px;
@@ -72,6 +72,29 @@
   }
   .back-btn:hover { background: rgba(242,238,227,0.09); border-color: rgba(242,238,227,0.28); }
   .back-btn:active { transform: translateY(1px); }
+
+  .auth-btn {
+    display:flex; align-items:center; gap:8px; padding:9px 16px; border-radius:10px;
+    border:1px solid rgba(201,162,75,0.35); background: rgba(201,162,75,0.1);
+    color:#E4C06E; font-weight:800; font-size:13px; cursor:pointer; flex-shrink:0;
+    transition: background 0.15s ease, border-color 0.15s ease; margin-right:auto;
+  }
+  .auth-btn:hover { background: rgba(201,162,75,0.18); }
+  .auth-btn-active { border-color: rgba(90,190,140,0.4); background: rgba(90,190,140,0.1); color:#7FDBA0; }
+  .admin-tag {
+    font-size:9.5px; background: rgba(201,162,75,0.25); color:#E4C06E; padding:2px 7px;
+    border-radius:4px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px;
+  }
+
+  .modal-overlay {
+    position:fixed; inset:0; background: rgba(5,10,20,0.72); backdrop-filter: blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .modal-box {
+    background: linear-gradient(180deg, #16304f, #0f2440);
+    border:1.5px solid rgba(201,162,75,0.4); border-radius:16px; padding:26px 24px;
+    max-width:380px; width:100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
 
   header { display:flex; align-items:center; justify-content:center; gap:14px; max-width:1440px; margin:0 auto 6px; position:relative; }
   .header-crest {
@@ -593,7 +616,7 @@ function scoreSelectHtml(value, onchangeAttr) {
 // ============ App State ============
 const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
 let appState = emptyState();
-let members = []; // [{id, name, club, is_guest, confirmed}]
+let members = []; // [{id, name, club, is_guest, confirmed, role, pin}]
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
 let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -602,6 +625,147 @@ let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
 // keystrokes — restores exactly what the user already typed instead of
 // wiping the fields back to empty.
 let addMemberDraft = { name: "", club: "", isGuest: false };
+
+// ============ Auth state & permissions ============
+// currentUserId is remembered on this device via localStorage so people
+// don't have to log in every time they open the app. The PIN itself is
+// never stored client-side beyond the login attempt.
+const AUTH_STORAGE_KEY = "ezba-league-current-user";
+let currentUserId = localStorage.getItem(AUTH_STORAGE_KEY) || null;
+let loginModal = null; // null | { nameInput, pinInput, error, pendingAction }
+let profileModal = false; // whether the profile/change-pin panel is open
+
+function getCurrentUser() {
+  if (!currentUserId) return null;
+  return members.find(m => m.id === currentUserId) || null;
+}
+
+function isAdmin() {
+  const u = getCurrentUser();
+  return !!u && u.role === "admin";
+}
+
+function isLoggedIn() {
+  return !!getCurrentUser();
+}
+
+// Central permission check. `level` is "member" (any logged-in user) or
+// "admin" (admins only). If the check fails because nobody is logged in,
+// opens the login modal and remembers what to do once login succeeds.
+// Returns true if the caller may proceed immediately.
+function requirePermission(level, onSuccess) {
+  const user = getCurrentUser();
+  if (!user) {
+    loginModal = { nameInput: "", pinInput: "", error: "", pendingAction: onSuccess || null };
+    render();
+    return false;
+  }
+  if (level === "admin" && user.role !== "admin") {
+    alert("هذا الإجراء يحتاج صلاحية مشرف. المشرفين حالياً: تركي ونصر.");
+    return false;
+  }
+  if (onSuccess) onSuccess();
+  return true;
+}
+
+window.openLogin = function() {
+  loginModal = { nameInput: "", pinInput: "", error: "", pendingAction: null };
+  render();
+};
+
+window.closeLogin = function() {
+  loginModal = null;
+  render();
+};
+
+window.updateLoginField = function(field, value) {
+  if (!loginModal) return;
+  loginModal[field] = value;
+};
+
+window.submitLogin = async function() {
+  if (!loginModal) return;
+  const name = (loginModal.nameInput || "").trim();
+  const pin = (loginModal.pinInput || "").trim();
+  if (!name || !pin) {
+    loginModal.error = "أدخل الاسم ورمز الدخول";
+    render();
+    return;
+  }
+  // match by name (case/space tolerant), since usernames are just member names
+  const match = members.find(m => m.name.trim() === name);
+  if (!match) {
+    loginModal.error = "ما فيه عضو بهذا الاسم";
+    render();
+    return;
+  }
+  if ((match.pin || "1234") !== pin) {
+    loginModal.error = "رمز الدخول غلط";
+    render();
+    return;
+  }
+  currentUserId = match.id;
+  localStorage.setItem(AUTH_STORAGE_KEY, currentUserId);
+  const pending = loginModal.pendingAction;
+  loginModal = null;
+  render();
+  if (pending) pending();
+};
+
+window.logout = function() {
+  currentUserId = null;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  profileModal = false;
+  render();
+};
+
+window.openProfile = function() {
+  if (!requirePermission("member")) return;
+  profileModal = { pin1: "", pin2: "", error: "", success: "" };
+  render();
+};
+
+window.closeProfile = function() {
+  profileModal = false;
+  render();
+};
+
+window.updateProfileField = function(field, value) {
+  if (!profileModal) return;
+  profileModal[field] = value;
+};
+
+window.submitPinChange = async function() {
+  if (!profileModal) return;
+  const user = getCurrentUser();
+  if (!user) return;
+  const p1 = (profileModal.pin1 || "").trim();
+  const p2 = (profileModal.pin2 || "").trim();
+  if (!p1 || p1.length < 4) {
+    profileModal.error = "الرمز لازم يكون 4 أرقام أو أكثر";
+    profileModal.success = "";
+    render();
+    return;
+  }
+  if (p1 !== p2) {
+    profileModal.error = "الرمزين ما يتطابقون";
+    profileModal.success = "";
+    render();
+    return;
+  }
+  user.pin = p1;
+  profileModal.error = "";
+  profileModal.success = "تم تغيير الرمز ✓";
+  render();
+  try {
+    await updateMember(user.id, { pin: p1 });
+  } catch (e) {
+    console.error(e);
+    profileModal.success = "";
+    profileModal.error = "تعذر حفظ الرمز الجديد، حاول مرة ثانية";
+    render();
+  }
+};
 
 // ---- Back button: always returns straight to the home screen (tournament
 // view), regardless of how many screens were visited — no history stack. ----
@@ -681,12 +845,12 @@ window.updateAddMemberDraft = function(field, value) {
   // background poll's render (if one slips through) won't lose it.
 };
 
-window.addMember = async function() {
+async function doAddMember() {
   const name = addMemberDraft.name.trim();
   const club = addMemberDraft.club.trim();
   if (!name || !club) return;
   const isGuest = !!addMemberDraft.isGuest;
-  const newMember = { id: uid(), name, club, is_guest: isGuest, confirmed: false, is_core: false };
+  const newMember = { id: uid(), name, club, is_guest: isGuest, confirmed: false, is_core: false, role: "member", pin: "1234" };
   members.push(newMember);
   addMemberDraft = { name: "", club: "", isGuest: false }; // clear the form now that it's submitted
   render();
@@ -700,9 +864,10 @@ window.addMember = async function() {
   } finally {
     pendingWrites--;
   }
-};
+}
+window.addMember = function() { requirePermission("member", doAddMember); };
 
-window.toggleConfirm = async function(id) {
+async function doToggleConfirm(id) {
   const m = members.find(x => x.id === id);
   if (!m) return;
   m.confirmed = !m.confirmed;
@@ -716,12 +881,22 @@ window.toggleConfirm = async function(id) {
   } finally {
     pendingWrites--;
   }
+}
+window.toggleConfirm = function(id) {
+  requirePermission("member", () => {
+    const user = getCurrentUser();
+    if (!isAdmin() && user.id !== id) {
+      alert("تقدر تأكد حضورك أنت بس. تأكيد حضور شخص ثاني صلاحية مشرفين فقط (تركي ونصر).");
+      return;
+    }
+    doToggleConfirm(id);
+  });
 };
 
-window.removeMember = async function(id) {
+async function doRemoveMember(id) {
   const m = members.find(x => x.id === id);
-  if (m && m.is_core) {
-    alert("هذا عضو أساسي بقائمة الفريق ولا يمكن حذفه. تقدر تحذف فقط الأعضاء والضيوف اللي تضيفهم بنفسك.");
+  if (m && m.is_core && !isAdmin()) {
+    alert("هذا عضو أساسي بقائمة الفريق ولا يمكن حذفه إلا من مشرف.");
     return;
   }
   members = members.filter(m => m.id !== id);
@@ -735,7 +910,8 @@ window.removeMember = async function(id) {
   } finally {
     pendingWrites--;
   }
-};
+}
+window.removeMember = function(id) { requirePermission("member", () => doRemoveMember(id)); };
 
 // ============ Tournament actions ============
 function startNewTournament() {
@@ -823,7 +999,7 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
 }
 
-window.endPlayDay = async function() {
+async function doEndPlayDay() {
   if (!confirm("هل تبي تنهي يوم اللعب؟ راح تتصفر كل التأكيدات ويتحذف الضيوف المؤقتين، وتحتاجون تأكيد جديد لأي يوم لعب قادم.")) return;
   members.forEach(m => (m.confirmed = false));
   members = members.filter(m => !m.is_guest);
@@ -839,28 +1015,33 @@ window.endPlayDay = async function() {
   } finally {
     pendingWrites--;
   }
-};
+}
+window.endPlayDay = function() { requirePermission("member", doEndPlayDay); };
 
 // Delete a completed tournament from the archive (and its stats contribution).
-window.deleteArchivedTournament = async function(archiveId) {
+// Admin-only: this permanently erases historical stats for everyone.
+async function doDeleteArchivedTournament(archiveId) {
   const entry = appState.archive.find(t => t.id === archiveId);
   const label = entry ? entry.name : "هذه البطولة";
   if (!confirm(`متأكد تبي تمسح "${label}" بالكامل من الأرشيف؟ هذا الإجراء ما ينرجع، وبتنمسح كل إحصائياتها من التصنيفات التاريخية.`)) return;
   const nextArchive = appState.archive.filter(t => t.id !== archiveId);
   await persist({ ...appState, archive: nextArchive });
   syncBadge.textContent = "تم حذف البطولة من الأرشيف ✓";
-};
+}
+window.deleteArchivedTournament = function(archiveId) { requirePermission("admin", () => doDeleteArchivedTournament(archiveId)); };
 
 // Discard the tournament currently in progress (any stage, even unfinished),
-// without archiving it. Useful if a draw or match set was started by mistake.
-window.discardCurrentTournament = async function() {
+// without archiving it. Admin-only, since it destroys other members' entered
+// results.
+async function doDiscardCurrentTournament() {
   const cur = appState.current;
   const label = cur ? cur.name : "البطولة الحالية";
   if (!confirm(`متأكد تبي تمسح "${label}" الجارية الآن؟ كل القرعة والنتائج المدخلة لها بتنمسح ولن تُحفظ بالأرشيف.`)) return;
   wheelUi = { rotation: 0, spinning: false, lastWinner: null };
   await persist({ ...appState, current: null });
   syncBadge.textContent = "تم مسح البطولة الجارية ✓";
-};
+}
+window.discardCurrentTournament = function() { requirePermission("admin", doDiscardCurrentTournament); };
 
 // ============ Wheel spin sound (Web Audio API, no external files) ============
 let audioCtx = null;
@@ -1137,7 +1318,7 @@ function membersStageHtml() {
 
   return `<div class="card theme-members">
     <div class="section-icon-title"><span class="icon">👥</span>قائمة الأعضاء والأندية</div>
-    <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه)، وينتقل اسمك لقائمة المؤكدين. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
+    <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه). كل عضو يأكد حضوره هو بس — تأكيد حضور شخص ثاني صلاحية مشرفين فقط. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
 
     <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
     ${confirmed.length === 0 ? `<div class="empty-note">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
@@ -1458,6 +1639,58 @@ function statsPanelHtml(archive, compact) {
 }
 
 // ============ Main render ============
+function authButtonHtml() {
+  const user = getCurrentUser();
+  if (!user) {
+    return `<button class="auth-btn" onclick="openLogin()">تسجيل الدخول</button>`;
+  }
+  const roleTag = user.role === "admin" ? `<span class="admin-tag">مشرف</span>` : "";
+  return `<button class="auth-btn auth-btn-active" onclick="openProfile()">${escapeHtml(user.name)}${roleTag}</button>`;
+}
+
+function loginModalHtml() {
+  if (!loginModal) return "";
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeLogin()">
+    <div class="modal-box">
+      <div class="section-icon-title"><span class="icon">🔑</span>تسجيل الدخول</div>
+      <p class="hint">أدخل اسمك بالضبط زي ما هو مسجل بقائمة الأعضاء، ورمز الدخول (افتراضياً 1234 لو ما غيّرته).</p>
+      <div class="input-row" style="flex-direction:column;">
+        <input class="text-input" placeholder="اسم المستخدم" value="${escapeHtml(loginModal.nameInput)}" oninput="updateLoginField('nameInput', this.value)">
+        <input class="text-input" type="password" placeholder="رمز الدخول" value="${escapeHtml(loginModal.pinInput)}" oninput="updateLoginField('pinInput', this.value)" onkeydown="if(event.key==='Enter') submitLogin()">
+      </div>
+      ${loginModal.error ? `<div class="warn-note">${escapeHtml(loginModal.error)}</div>` : ""}
+      <button class="cta-btn" onclick="submitLogin()">دخول</button>
+      <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeLogin()">إلغاء</button>
+    </div>
+  </div>`;
+}
+
+function profileModalHtml() {
+  if (!profileModal) return "";
+  const user = getCurrentUser();
+  if (!user) return "";
+  const roleLabel = user.role === "admin" ? "مشرف — كل الصلاحيات" : "عضو — تأكيد حضور، إضافة/حذف أعضاء، إنهاء يوم اللعب";
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeProfile()">
+    <div class="modal-box">
+      <div class="section-icon-title"><span class="icon">👤</span>${escapeHtml(user.name)}</div>
+      <p class="hint">${roleLabel}</p>
+      <div class="archive-divider"></div>
+      <div class="add-member-label">تغيير رمز الدخول</div>
+      <div class="input-row" style="flex-direction:column;">
+        <input class="text-input" type="password" placeholder="رمز جديد" value="${escapeHtml(profileModal.pin1)}" oninput="updateProfileField('pin1', this.value)">
+        <input class="text-input" type="password" placeholder="أعد كتابة الرمز الجديد" value="${escapeHtml(profileModal.pin2)}" oninput="updateProfileField('pin2', this.value)">
+      </div>
+      ${profileModal.error ? `<div class="warn-note">${escapeHtml(profileModal.error)}</div>` : ""}
+      ${profileModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.success)}</div>` : ""}
+      <button class="cta-btn" onclick="submitPinChange()">حفظ الرمز الجديد</button>
+      <button class="cta-btn danger" style="margin-top:8px;" onclick="logout()">تسجيل الخروج</button>
+      <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeProfile()">إغلاق</button>
+    </div>
+  </div>`;
+}
+
 function render() {
   if (!loaded) {
     app.innerHTML = `<div class="loading-box">جارِ تحميل بيانات الدوري المشتركة...</div>`;
@@ -1467,10 +1700,10 @@ function render() {
   const canGoBack = view !== HOME_VIEW;
 
   app.innerHTML = `
-    ${canGoBack ? `
     <div class="topbar">
-      <button class="back-btn" onclick="goBack()">→ رجوع</button>
-    </div>` : ""}
+      ${canGoBack ? `<button class="back-btn" onclick="goBack()">→ رجوع</button>` : `<span></span>`}
+      ${authButtonHtml()}
+    </div>
     <header>
       <div class="header-crest"><img src="${TROPHY_IMAGE}" alt="كأس دوري أبطال العزبة"></div>
       <h1>دوري أبطال العزبة</h1>
@@ -1489,10 +1722,14 @@ function render() {
       </main>
       ${view === "tournament" ? `<aside class="sidebar">${statsPanelHtml(appState.archive, true)}</aside>` : ""}
     </div>
+    ${loginModalHtml()}
+    ${profileModalHtml()}
   `;
 }
 
 // ============ UI event handlers exposed globally ============
+// Draw setup (group mode, seeding toggle, starting the draw) is open to
+// everyone — only actual match-result entry is admin-only.
 window.setGroupMode = function(mode) {
   window.__selectedGroupMode = mode;
   render();
@@ -1506,16 +1743,17 @@ window.setView = function(v) {
   render();
 };
 window.goBack = goBack;
-window.startNewTournament = startNewTournament;
-window.spinWheel = spinWheel;
-window.proceedToGroups = proceedToGroups;
-window.updateMatchField = updateMatchField;
-window.goToKnockout = goToKnockout;
-window.updateSemiField = updateSemiField;
-window.goToFinal = goToFinal;
-window.updateFinalField = updateFinalField;
-window.finishKnockout = finishKnockout;
-window.finishSingleGroup = finishSingleGroup;
+window.startNewTournament = startNewTournament; // available to everyone, no login required
+window.spinWheel = spinWheel; // available to everyone, no login required
+window.proceedToGroups = proceedToGroups; // continuation of the open wheel step, available to everyone
+window.updateMatchField = function(which, matchId, field, value) { requirePermission("admin", () => updateMatchField(which, matchId, field, value)); };
+window.goToKnockout = function() { requirePermission("admin", goToKnockout); };
+window.updateSemiField = function(key, field, value) { requirePermission("admin", () => updateSemiField(key, field, value)); };
+window.goToFinal = function() { requirePermission("admin", goToFinal); };
+window.updateFinalField = function(field, value) { requirePermission("admin", () => updateFinalField(field, value)); };
+window.finishKnockout = function() { requirePermission("admin", finishKnockout); };
+window.finishSingleGroup = function() { requirePermission("admin", finishSingleGroup); };
+
 
 // ============ Lock down "app-like" gesture behavior ============
 // Block pinch-to-zoom (Safari fires this even with user-scalable=no in some cases)

@@ -1118,6 +1118,12 @@ function membersStageHtml() {
     <h2>قائمة الأعضاء والأندية</h2>
     <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه)، وينتقل اسمك لقائمة المؤكدين. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
 
+    <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
+    ${confirmed.length === 0 ? `<div class="empty-note">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
+
+    <div class="section-title">بانتظار التأكيد (${unconfirmed.length})</div>
+    ${unconfirmed.length === 0 ? `<div class="empty-note">الكل أكّد حضوره 🎉</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
+
     <div class="add-member-box">
       <div class="add-member-label">+ إضافة عضو أو ضيف جديد</div>
       <div class="input-row">
@@ -1130,12 +1136,6 @@ function membersStageHtml() {
       </label>
       <button class="primary-btn" style="width:100%" onclick="addMember()">+ إضافة إلى القائمة</button>
     </div>
-
-    <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
-    ${confirmed.length === 0 ? `<div class="empty-note">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
-
-    <div class="section-title">بانتظار التأكيد (${unconfirmed.length})</div>
-    ${unconfirmed.length === 0 ? `<div class="empty-note">الكل أكّد حضوره 🎉</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
 
     <div class="archive-divider"></div>
     <p class="hint" style="margin-bottom:10px;">لما تخلصون كل بطولات اليوم (مهما كان عددها)، اضغط الزر تحت عشان تصفّر التأكيدات استعداداً ليوم لعب جديد.</p>

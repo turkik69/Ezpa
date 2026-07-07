@@ -603,14 +603,11 @@ let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
 // wiping the fields back to empty.
 let addMemberDraft = { name: "", club: "", isGuest: false };
 
-// ---- Navigation history stack (for the back button) ----
-// Each entry is a screen name the user visited, in order. The last entry
-// is always the current screen; "back" drops it and shows whatever is now last.
-let navStack = ["members"];
+// ---- Back button: always returns straight to the home screen (tournament
+// view), regardless of how many screens were visited — no history stack. ----
+const HOME_VIEW = "members";
 function goBack() {
-  if (navStack.length <= 1) return; // already at the first screen, nothing to go back to
-  navStack.pop();
-  view = navStack[navStack.length - 1];
+  view = HOME_VIEW;
   render();
 }
 
@@ -1467,7 +1464,7 @@ function render() {
     return;
   }
   const headerSubtitle = appState.current ? escapeHtml(appState.current.name) : "بانتظار بطولة جديدة";
-  const canGoBack = navStack.length > 1;
+  const canGoBack = view !== HOME_VIEW;
 
   app.innerHTML = `
     ${canGoBack ? `
@@ -1505,7 +1502,6 @@ window.setUseSeeding = function(checked) {
   render();
 };
 window.setView = function(v) {
-  if (navStack[navStack.length - 1] !== v) navStack.push(v);
   view = v;
   render();
 };

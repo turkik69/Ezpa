@@ -743,18 +743,28 @@ function standingsFor(players, matches, tiebreakLog) {
   ptsKeysDesc.forEach((pts) => {
     const cluster = byPts[pts];
     if (cluster.length === 1) { ordered.push(cluster[0]); return; }
-    const byGf = {};
-    cluster.forEach((t) => { byGf[t.gf] = byGf[t.gf] || []; byGf[t.gf].push(t); });
-    const gfKeysDesc = Object.keys(byGf).map(Number).sort((a,b) => b-a);
-    gfKeysDesc.forEach((gf) => {
-      const gfCluster = byGf[gf];
-      if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
-      // still tied on points and goals scored -> random draw, resolved pairwise & logged
-      const shuffled = shuffle(gfCluster);
-      if (tiebreakLog && shuffled.length >= 2) {
-        tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf });
-      }
-      ordered.push(...shuffled);
+    // Tied on points -> rank by goal difference next (standard football
+    // tiebreak order: points, then goal difference, then goals scored).
+    const byGd = {};
+    cluster.forEach((t) => { byGd[t.gd] = byGd[t.gd] || []; byGd[t.gd].push(t); });
+    const gdKeysDesc = Object.keys(byGd).map(Number).sort((a,b) => b-a);
+    gdKeysDesc.forEach((gd) => {
+      const gdCluster = byGd[gd];
+      if (gdCluster.length === 1) { ordered.push(gdCluster[0]); return; }
+      // still tied on points and goal difference -> goals scored
+      const byGf = {};
+      gdCluster.forEach((t) => { byGf[t.gf] = byGf[t.gf] || []; byGf[t.gf].push(t); });
+      const gfKeysDesc = Object.keys(byGf).map(Number).sort((a,b) => b-a);
+      gfKeysDesc.forEach((gf) => {
+        const gfCluster = byGf[gf];
+        if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
+        // still tied on points, goal difference, and goals scored -> random draw, resolved pairwise & logged
+        const shuffled = shuffle(gfCluster);
+        if (tiebreakLog && shuffled.length >= 2) {
+          tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf });
+        }
+        ordered.push(...shuffled);
+      });
     });
   });
   return ordered;

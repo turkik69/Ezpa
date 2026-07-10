@@ -105,6 +105,62 @@
     max-width:380px; width:100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
   }
 
+  /* ---- Champion celebration overlay ---- */
+  .celebration-overlay {
+    position:fixed; inset:0; z-index:200;
+    background: radial-gradient(ellipse at 50% 30%, rgba(30,50,90,0.96), rgba(4,10,22,0.98));
+    display:flex; align-items:center; justify-content:center;
+    animation: celebrationFadeIn 0.4s ease;
+  }
+  @keyframes celebrationFadeIn { from { opacity:0; } to { opacity:1; } }
+  .celebration-canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .celebration-content {
+    position:relative; z-index:2; text-align:center; padding:32px 28px;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .celebration-tournament {
+    font-size:13px; font-weight:800; color: rgba(242,238,227,0.6);
+    letter-spacing:0.5px; margin-bottom:8px; text-transform:uppercase;
+  }
+  .celebration-crown {
+    font-size:56px; line-height:1; margin-bottom:6px;
+    animation: celebrationCrownPop 0.7s cubic-bezier(.34,1.56,.64,1) both, celebrationCrownFloat 2.4s ease-in-out 0.7s infinite;
+    filter: drop-shadow(0 6px 18px rgba(201,162,75,0.5));
+  }
+  @keyframes celebrationCrownPop {
+    0% { transform: scale(0) rotate(-20deg); opacity:0; }
+    100% { transform: scale(1) rotate(0deg); opacity:1; }
+  }
+  @keyframes celebrationCrownFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .celebration-champion-label {
+    font-size:15px; font-weight:800; color:#E4C06E; letter-spacing:2px; text-transform:uppercase;
+    animation: celebrationRise 0.6s ease 0.2s both;
+  }
+  .celebration-champion-name {
+    font-size:38px; font-weight:900; color:#F2EEE3; margin-top:4px; line-height:1.2;
+    text-shadow: 0 0 30px rgba(228,192,110,0.6), 0 4px 12px rgba(0,0,0,0.4);
+    animation: celebrationRise 0.7s ease 0.35s both;
+  }
+  .celebration-runnerup {
+    font-size:14px; color: rgba(242,238,227,0.65); margin-top:14px; font-weight:700;
+    animation: celebrationRise 0.6s ease 0.55s both;
+  }
+  @keyframes celebrationRise {
+    from { opacity:0; transform: translateY(16px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+  .celebration-close-btn {
+    margin-top:28px; padding:11px 28px; border-radius:10px;
+    border:1.5px solid rgba(242,238,227,0.25); background: rgba(242,238,227,0.06);
+    color:#F2EEE3; font-weight:800; font-size:13.5px; cursor:pointer;
+    animation: celebrationRise 0.6s ease 0.75s both;
+    transition: background 0.15s ease;
+  }
+  .celebration-close-btn:hover { background: rgba(242,238,227,0.14); }
+
   header { display:flex; align-items:center; justify-content:center; gap:14px; max-width:1440px; margin:0 auto 6px; position:relative; }
   .header-crest {
     height:52px; width:auto; flex-shrink:0;
@@ -828,6 +884,7 @@ const AUTH_STORAGE_KEY = "ezba-league-current-user";
 let currentUserId = localStorage.getItem(AUTH_STORAGE_KEY) || null;
 let loginModal = null; // null | { nameInput, pinInput, error, pendingAction }
 let profileModal = false; // whether the profile/change-pin panel is open
+let celebration = null; // null | { championName, runnerUpName, tournamentName }
 
 function getCurrentUser() {
   if (!currentUserId) return null;
@@ -1037,10 +1094,12 @@ async function pollLoad() {
     // Don't tear down and rebuild the DOM while the user has any field
     // focused (a text input being typed into, or a score dropdown open) —
     // that would wipe out what they're typing or force-close the dropdown
-    // before they're done. The data above is still updated in memory, so
-    // the next render (e.g. right after they finish and click away) will
-    // reflect it correctly.
-    if (!isUserInteractingWithInput() && !wheelUi.spinning) {
+    // before they're done. Same idea for the champion celebration: rebuilding
+    // the DOM would swap in a fresh <canvas>, restarting the fireworks from
+    // scratch every 4 seconds instead of letting the one animation play out.
+    // The data above is still updated in memory, so the next render (e.g.
+    // right after they finish typing, or close the celebration) reflects it.
+    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration) {
       render();
     }
     syncBadge.textContent = "متصل ✓ مباشر";
@@ -1226,6 +1285,9 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
   if (champion) {
     sendPushNotification(`👑 بطل ${cur.name}`, `${champion.name} توّج بطلاً! ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
+    celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
+    render();
+    playChampionFanfare();
   }
 }
 
@@ -1316,6 +1378,65 @@ function playLandThud() {
     osc.start();
     osc.stop(ctx.currentTime + 0.35);
   } catch (e) {}
+}
+
+// ============ Champion fanfare (original composition, Web Audio API) ============
+// A short celebratory trumpet-and-drum fanfare, entirely synthesized —
+// no external audio files or copyrighted material of any kind.
+function playFanfareNote(ctx, startTime, freq, duration, volume) {
+  // Two detuned sawtooth oscillators layered together approximate a bright
+  // brass/trumpet timbre far better than a single pure tone would.
+  [0, 6].forEach((detune) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.value = freq;
+    osc.detune.value = detune;
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
+    gain.gain.setValueAtTime(volume, startTime + duration * 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  });
+}
+
+function playFanfareDrumHit(ctx, startTime, volume) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(120, startTime);
+  osc.frequency.exponentialRampToValueAtTime(45, startTime + 0.15);
+  gain.gain.setValueAtTime(volume, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.18);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + 0.18);
+}
+
+function playChampionFanfare() {
+  try {
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime + 0.05;
+    // Simple triumphant rising fanfare motif (royalty-free original melody),
+    // followed by a sustained held final chord — the classic "victory call"
+    // shape without copying any specific existing anthem's melody.
+    const notes = [
+      { t: 0.00, f: 523.25, d: 0.18, v: 0.22 }, // C5
+      { t: 0.20, f: 523.25, d: 0.14, v: 0.20 }, // C5
+      { t: 0.38, f: 659.25, d: 0.22, v: 0.24 }, // E5
+      { t: 0.65, f: 783.99, d: 0.32, v: 0.26 }, // G5
+      { t: 1.05, f: 1046.50, d: 0.55, v: 0.28 }, // C6 held
+      { t: 1.05, f: 783.99, d: 0.55, v: 0.16 }, // G5 harmony under the held note
+    ];
+    notes.forEach((n) => playFanfareNote(ctx, t0 + n.t, n.f, n.d, n.v));
+    [0, 0.20, 0.65, 1.05].forEach((t) => playFanfareDrumHit(ctx, t0 + t, 0.3));
+  } catch (e) {
+    // audio not available (e.g. autoplay blocked before any user gesture) — celebration still shows visually
+  }
 }
 
 // Real physics-driven spin: rotation is animated frame-by-frame via
@@ -1997,6 +2118,145 @@ function profileModalHtml() {
   </div>`;
 }
 
+function celebrationHtml() {
+  if (!celebration) return "";
+  const { championName, runnerUpName, tournamentName } = celebration;
+  return `
+  <div class="celebration-overlay" id="celebrationOverlay">
+    <canvas id="celebrationCanvas" class="celebration-canvas"></canvas>
+    <div class="celebration-content">
+      <div class="celebration-tournament">${escapeHtml(tournamentName)}</div>
+      <div class="celebration-crown">👑</div>
+      <div class="celebration-champion-label">البطل</div>
+      <div class="celebration-champion-name">${escapeHtml(championName)}</div>
+      ${runnerUpName ? `<div class="celebration-runnerup">🥈 الوصيف: ${escapeHtml(runnerUpName)}</div>` : ""}
+      <button class="celebration-close-btn" onclick="closeCelebration()">إغلاق ✕</button>
+    </div>
+  </div>`;
+}
+
+window.closeCelebration = function() {
+  celebration = null;
+  render();
+};
+
+// Fireworks + confetti particle animation, drawn on a canvas that fills the
+// celebration overlay. Re-initializes safely every time it's called (each
+// render() rebuilds the DOM, so the previous canvas/animation frame is gone
+// regardless — this just starts a fresh one against the new canvas node).
+let celebrationAnimHandle = null;
+let celebrationAnimRunningFor = null; // tracks which celebration instance is currently animating
+function startCelebrationAnimation() {
+  const canvas = document.getElementById("celebrationCanvas");
+  if (!canvas) return;
+  if (celebrationAnimHandle) cancelAnimationFrame(celebrationAnimHandle);
+
+  const ctx = canvas.getContext("2d");
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  const colors = ["#E4C06E", "#C9A24B", "#F2EEE3", "#5ABE8C", "#5A96E6", "#D13F35"];
+  const particles = [];
+
+  function spawnFirework(x, y) {
+    const count = 40 + Math.floor(Math.random() * 20);
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count;
+      const speed = 2 + Math.random() * 3.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        decay: 0.012 + Math.random() * 0.01,
+        color,
+        size: 2 + Math.random() * 2,
+        type: "spark",
+      });
+    }
+  }
+
+  function spawnConfettiBatch() {
+    for (let i = 0; i < 6; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: -20,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: 1.5 + Math.random() * 2,
+        life: 1,
+        decay: 0.003,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 5 + Math.random() * 4,
+        type: "confetti",
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 10,
+      });
+    }
+  }
+
+  let elapsed = 0;
+  let lastFireworkAt = -999;
+  let lastTime = performance.now();
+
+  function frame(now) {
+    const dt = Math.min(now - lastTime, 50);
+    lastTime = now;
+    elapsed += dt;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // launch a new firework burst roughly every 550ms for the first 4.5s
+    if (elapsed - lastFireworkAt > 550 && elapsed < 4500) {
+      lastFireworkAt = elapsed;
+      spawnFirework(
+        canvas.width * (0.2 + Math.random() * 0.6),
+        canvas.height * (0.18 + Math.random() * 0.32)
+      );
+    }
+    // steady confetti fall throughout
+    if (elapsed < 8000 && Math.random() < 0.9) spawnConfettiBatch();
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.type === "spark") p.vy += 0.04; // gravity pulls sparks down
+      if (p.type === "confetti") p.rotation += p.rotSpeed;
+      p.life -= p.decay;
+      if (p.life <= 0 || p.y > canvas.height + 30) {
+        particles.splice(i, 1);
+        continue;
+      }
+      ctx.globalAlpha = Math.max(p.life, 0);
+      ctx.fillStyle = p.color;
+      if (p.type === "spark") {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    if (elapsed < 9000 && celebration) {
+      celebrationAnimHandle = requestAnimationFrame(frame);
+    } else {
+      window.removeEventListener("resize", resize);
+    }
+  }
+  celebrationAnimHandle = requestAnimationFrame(frame);
+}
+
 function render() {
   if (!loaded) {
     app.innerHTML = `<div class="loading-box">جارِ تحميل بيانات الدوري المشتركة...</div>`;
@@ -2030,7 +2290,9 @@ function render() {
     </div>
     ${loginModalHtml()}
     ${profileModalHtml()}
+    ${celebrationHtml()}
   `;
+  if (celebration) startCelebrationAnimation();
 }
 
 // ============ UI event handlers exposed globally ============

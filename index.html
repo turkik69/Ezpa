@@ -411,6 +411,14 @@
   .member-info { flex:1; }
   .member-name { font-weight:800; font-size:14px; }
   .member-club { font-size:11.5px; color: rgba(242,238,227,0.5); margin-top:1px; display:flex; align-items:center; gap:6px; }
+  .player-nickname { font-size:0.85em; color: rgba(242,238,227,0.5); font-style:italic; }
+  .color-swatch-row { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+  .color-swatch {
+    width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+    transition: transform 0.1s ease, border-color 0.15s ease; flex-shrink:0;
+  }
+  .color-swatch:hover { transform: scale(1.1); }
+  .color-swatch.selected { border-color:#F2EEE3; box-shadow: 0 0 0 2px rgba(10,24,48,0.9), 0 0 0 4px #F2EEE3; }
   .club-logo { width:18px; height:18px; object-fit:contain; flex-shrink:0; }
   .club-logo.club-logo-sm { width:14px; height:14px; }
   .club-logo.club-logo-lg { width:24px; height:24px; }
@@ -842,6 +850,41 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
+// Curated personal-color palette. Deliberately not a free color picker —
+// every option here was chosen to stay legible against the app's navy
+// background and distinct from the semantic colors already in use
+// elsewhere (gold = tournament/trophy, green/blue = group A/B, red = danger).
+const PLAYER_COLOR_PALETTE = [
+  "#F2EEE3", // default cream (no personal color chosen)
+  "#7FDBA0", // soft green
+  "#7FB8F5", // soft blue
+  "#F5A9C5", // pink
+  "#C9A2F0", // lavender
+  "#F0A868", // orange
+  "#6FE0D0", // teal
+  "#F27F7F", // soft red
+];
+
+// Looks up a member's live customization (color/nickname) by name. Historical
+// stats and archived match data only ever store player names as plain
+// strings (not ids), so name is the one identifier that reaches every
+// display context — this keeps the same lookup working everywhere: live
+// matches, standings tables, stats leaderboards, and the celebration screen.
+function findMemberByName(name) {
+  return members.find(m => m.name === name);
+}
+
+// Renders a player's name wrapped in their personal color, with their
+// nickname (if set) shown in parentheses right after it. Falls back to the
+// plain default-colored name if the player has no record or no color set.
+function coloredNameHtml(name, extraClass) {
+  const m = findMemberByName(name);
+  const color = (m && m.color) || "#F2EEE3";
+  const nickname = m && m.nickname ? m.nickname.trim() : "";
+  const nicknameHtml = nickname ? ` <span class="player-nickname">"${escapeHtml(nickname)}"</span>` : "";
+  return `<span class="${extraClass || ''}" style="color:${escapeHtml(color)}">${escapeHtml(name)}</span>${nicknameHtml}`;
+}
+
 // Returns an <img> tag for a club's logo if we have one on file, otherwise
 // nothing (the club name text alone is still shown next to it regardless).
 function clubLogoHtml(clubName, sizeClass) {
@@ -972,7 +1015,7 @@ window.logout = function() {
 
 window.openProfile = function() {
   if (!requirePermission("member")) return;
-  profileModal = { pin1: "", pin2: "", error: "", success: "" };
+  profileModal = { pin1: "", pin2: "", error: "", success: "", color: null, nickname: null, customizationSuccess: "" };
   render();
 };
 
@@ -1017,6 +1060,27 @@ window.submitPinChange = async function() {
     render();
   }
 };
+
+window.submitCustomization = async function() {
+  if (!profileModal) return;
+  const user = getCurrentUser();
+  if (!user) return;
+  const color = profileModal.color != null ? profileModal.color : (user.color || "#F2EEE3");
+  const nickname = (profileModal.nickname != null ? profileModal.nickname : (user.nickname || "")).trim().slice(0, 20);
+  user.color = color;
+  user.nickname = nickname || null;
+  profileModal.customizationSuccess = "تم حفظ التخصيص ✓";
+  render();
+  try {
+    await updateMember(user.id, { color, nickname: nickname || null });
+  } catch (e) {
+    console.error(e);
+    profileModal.customizationSuccess = "";
+    profileModal.error = "تعذر حفظ التخصيص، حاول مرة ثانية";
+    render();
+  }
+};
+
 
 window.enablePushForThisDevice = async function() {
   const result = await subscribeCurrentUserToPush();
@@ -1685,7 +1749,7 @@ function membersStageHtml() {
   const memberRowHtml = (m) => `
     <div class="member-row ${m.confirmed ? 'confirmed' : ''}">
       <div class="member-info">
-        <div class="member-name">${escapeHtml(m.name)}${m.is_guest ? '<span class="guest-tag">ضيف</span>' : ''}</div>
+        <div class="member-name">${coloredNameHtml(m.name)}${m.is_guest ? '<span class="guest-tag">ضيف</span>' : ''}</div>
         <div class="member-club">${clubLogoHtml(m.club)}<span>${escapeHtml(m.club)}</span></div>
       </div>
       <button class="confirm-btn ${m.confirmed ? 'confirmed-btn' : ''}" onclick="toggleConfirm('${m.id}')">
@@ -1735,7 +1799,7 @@ function registerStageHtml() {
     : confirmed.map((p,i) => `
         <div class="player-chip">
           <span class="player-num">${i+1}</span>
-          <span style="flex:1; display:flex; align-items:center; gap:6px;">${escapeHtml(p.name)} <span style="opacity:0.55; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club)}</span></span>
+          <span style="flex:1; display:flex; align-items:center; gap:6px;">${coloredNameHtml(p.name)} <span style="opacity:0.55; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club)}</span></span>
         </div>`).join("");
 
   // Seeding box: only relevant in two-group mode, and only if the last
@@ -1800,9 +1864,9 @@ function wheelStageHtml() {
   }).join("");
 
   const groupAHtml = groupA.length === 0 ? `<div class="empty-note">—</div>`
-    : groupA.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${escapeHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
+    : groupA.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${coloredNameHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
   const groupBHtml = groupB.length === 0 ? `<div class="empty-note">—</div>`
-    : groupB.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${escapeHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
+    : groupB.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${coloredNameHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
 
   return `<div class="card theme-gold">
     <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
@@ -1834,7 +1898,7 @@ function scoreTableHtml(table) {
   const rows = table.map((t,i) => `
     <tr class="${i<2?'qualify-row':''}">
       <td>${i+1}</td>
-      <td style="text-align:right">${escapeHtml(t.name)}</td>
+      <td style="text-align:right">${coloredNameHtml(t.name)}</td>
       <td>${t.played}</td>
       <td>${t.w}</td>
       <td>${t.d}</td>
@@ -1864,16 +1928,16 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
     const roundMatches = byRound[roundNum];
     const matchRows = roundMatches.map(m => `
       <div class="match-row">
-        <span class="match-name">${escapeHtml(m.a.name)}</span>
+        <span class="match-name">${coloredNameHtml(m.a.name)}</span>
         ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
         <span class="vs">–</span>
         ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
-        <span class="match-name">${escapeHtml(m.b.name)}</span>
+        <span class="match-name">${coloredNameHtml(m.b.name)}</span>
       </div>`).join("");
 
     const byePlayer = roundByes && roundByes[roundNum];
     const byeHtml = byePlayer
-      ? `<div class="bye-note">💤 ${escapeHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
+      ? `<div class="bye-note">💤 ${coloredNameHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
       : "";
 
     return `<div class="round-block">
@@ -1936,11 +2000,11 @@ function semiPanelHtml(label, match, key) {
   return `<div class="group-box">
     <h3 class="group-title">${label}</h3>
     <div class="match-row">
-      <span class="match-name">${escapeHtml(match.a?.name ?? "—")}</span>
+      <span class="match-name">${match.a ? coloredNameHtml(match.a.name) : "—"}</span>
       ${scoreSelectHtml(match.scoreA, `onchange="updateSemiField('${key}','scoreA',this.value)"`)}
       <span class="vs">–</span>
       ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
-      <span class="match-name">${escapeHtml(match.b?.name ?? "—")}</span>
+      <span class="match-name">${match.b ? coloredNameHtml(match.b.name) : "—"}</span>
     </div>
     ${tieWarn}
   </div>`;
@@ -1961,14 +2025,14 @@ function knockoutStageHtml() {
     finalHtml = `<div class="final-box">
       <h3 class="group-title">النهائي الكبير</h3>
       <div class="match-row">
-        <span class="match-name">${escapeHtml(final.a.name)}</span>
+        <span class="match-name">${coloredNameHtml(final.a.name)}</span>
         ${scoreSelectHtml(final.scoreA, `onchange="updateFinalField('scoreA',this.value)"`)}
         <span class="vs">–</span>
         ${scoreSelectHtml(final.scoreB, `onchange="updateFinalField('scoreB',this.value)"`)}
-        <span class="match-name">${escapeHtml(final.b.name)}</span>
+        <span class="match-name">${coloredNameHtml(final.b.name)}</span>
       </div>
       ${champion ? `
-        <div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${escapeHtml(champion.name)}</div>
+        <div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${coloredNameHtml(champion.name)}</div>
         <button class="cta-btn" onclick="finishKnockout()">حفظ النتيجة النهائية وأرشفة البطولة ←</button>
       ` : ""}
     </div>`;
@@ -2011,7 +2075,7 @@ function statBlockHtml(title, icon, rows, valueKey, suffix) {
     : rows.map((r,i) => `
         <div class="stat-row">
           <span class="stat-rank">${i+1}</span>
-          <span style="flex:1">${escapeHtml(r.name)}</span>
+          <span style="flex:1">${coloredNameHtml(r.name)}</span>
           <span class="stat-value">${r[valueKey]} ${suffix}</span>
         </div>`).join("");
   return `<div class="stat-block"><div class="stat-block-title">${icon} ${title}</div>${rowsHtml}</div>`;
@@ -2039,7 +2103,7 @@ function statsPanelHtml(archive, compact) {
       <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
     html += archive.slice().reverse().map(t => `
       <div class="archive-row" style="display:flex; align-items:center; gap:10px;">
-        <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${escapeHtml(t.champion||"—")} | وصيف: ${escapeHtml(t.runnerUp||"—")}</span>
+        <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${t.champion ? coloredNameHtml(t.champion) : "—"} | وصيف: ${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}</span>
         <button class="cta-btn danger" style="width:auto; margin:0; padding:8px 14px; font-size:12px;" onclick="deleteArchivedTournament('${t.id}')">حذف هذه البطولة</button>
       </div>
     `).join("");
@@ -2055,7 +2119,7 @@ function authButtonHtml() {
     return `<button class="auth-btn" onclick="openLogin()">تسجيل الدخول</button>`;
   }
   const roleTag = user.role === "admin" ? `<span class="admin-tag">مشرف</span>` : "";
-  return `<button class="auth-btn auth-btn-active" onclick="openProfile()">${escapeHtml(user.name)}${roleTag}</button>`;
+  return `<button class="auth-btn auth-btn-active" onclick="openProfile()">${coloredNameHtml(user.name)}${roleTag}</button>`;
 }
 
 function loginModalHtml() {
@@ -2094,11 +2158,24 @@ function profileModalHtml() {
   } else {
     notifSectionHtml = `<button class="cta-btn" onclick="enablePushForThisDevice()">🔔 فعّل الإشعارات على هذا الجهاز</button>`;
   }
+  const currentColor = profileModal.color != null ? profileModal.color : (user.color || "#F2EEE3");
+  const swatchesHtml = PLAYER_COLOR_PALETTE.map(c => `
+    <div class="color-swatch ${c === currentColor ? 'selected' : ''}" style="background:${c}" onclick="updateProfileField('color', '${c}')"></div>
+  `).join("");
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeProfile()">
     <div class="modal-box">
-      <div class="section-icon-title"><span class="icon">👤</span>${escapeHtml(user.name)}</div>
+      <div class="section-icon-title"><span class="icon">👤</span>${coloredNameHtml(user.name)}</div>
       <p class="hint">${roleLabel}</p>
+      <div class="archive-divider"></div>
+      <div class="add-member-label">التخصيص الشخصي</div>
+      <p class="hint">اختر لونك المميز ولقبك — يظهرون جنب اسمك بكل مكان بالتطبيق.</p>
+      <div class="color-swatch-row">${swatchesHtml}</div>
+      <div class="input-row" style="margin-top:10px;">
+        <input class="text-input" placeholder="لقبك (اختياري، مثلاً: الثعلب)" maxlength="20" value="${escapeHtml(profileModal.nickname != null ? profileModal.nickname : (user.nickname || ''))}" oninput="updateProfileField('nickname', this.value)">
+      </div>
+      <button class="cta-btn" style="margin-top:10px;" onclick="submitCustomization()">حفظ التخصيص</button>
+      ${profileModal.customizationSuccess ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
       <div class="archive-divider"></div>
       <div class="add-member-label">الإشعارات</div>
       <p class="hint">فعّل الإشعارات عشان توصلك تنبيهات (تأكيد حضور، بداية بطولة، نتائج نهائي) حتى لو التطبيق مقفول. التفعيل خاص بهذا الجهاز فقط.</p>
@@ -2128,8 +2205,8 @@ function celebrationHtml() {
       <div class="celebration-tournament">${escapeHtml(tournamentName)}</div>
       <div class="celebration-crown">👑</div>
       <div class="celebration-champion-label">البطل</div>
-      <div class="celebration-champion-name">${escapeHtml(championName)}</div>
-      ${runnerUpName ? `<div class="celebration-runnerup">🥈 الوصيف: ${escapeHtml(runnerUpName)}</div>` : ""}
+      <div class="celebration-champion-name">${coloredNameHtml(championName)}</div>
+      ${runnerUpName ? `<div class="celebration-runnerup">🥈 الوصيف: ${coloredNameHtml(runnerUpName)}</div>` : ""}
       <button class="celebration-close-btn" onclick="closeCelebration()">إغلاق ✕</button>
     </div>
   </div>`;

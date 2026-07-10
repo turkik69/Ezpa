@@ -47,7 +47,9 @@
       repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 42px),
       linear-gradient(180deg, #0A1830 0%, #12274A 50%, #0A1830 100%);
     color: #F2EEE3;
-    padding: 20px 24px 90px;
+    /* extra top padding accounts for the iPhone Dynamic Island / notch area,
+       so the login button and header never sit underneath it */
+    padding: calc(20px + env(safe-area-inset-top, 0px)) 24px calc(90px + env(safe-area-inset-bottom, 0px));
     position: relative;
   }
   input[type=number]::-webkit-inner-spin-button { opacity: 1; }
@@ -63,6 +65,11 @@
 
   .topbar {
     max-width: 1440px; margin: 0 auto 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    width: 100%;
+    /* keep both buttons clear of the Dynamic Island / camera cutout area on
+       notched phones, which can sit close to either side depending on device */
+    padding-left: max(4px, env(safe-area-inset-left, 0px));
+    padding-right: max(4px, env(safe-area-inset-right, 0px));
   }
   .back-btn {
     display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:10px;

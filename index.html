@@ -265,6 +265,19 @@
   }
   .group-row { font-size:13.5px; padding:6px 0; border-bottom:1px solid rgba(242,238,227,0.06); }
 
+  .round-block { margin-bottom:18px; }
+  .round-block:last-of-type { margin-bottom:14px; }
+  .round-label {
+    font-size:11px; font-weight:800; color: rgba(242,238,227,0.5);
+    text-transform:uppercase; letter-spacing:0.6px;
+    display:flex; align-items:center; gap:8px; margin-bottom:8px;
+  }
+  .round-label::after { content:""; flex:1; height:1px; background: rgba(242,238,227,0.1); }
+  .bye-note {
+    font-size:11.5px; color: rgba(242,238,227,0.5); text-align:center;
+    padding:6px; margin-top:2px; font-style:italic;
+  }
+
   .match-list { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
   .match-row {
     display:flex; align-items:center; gap:8px; font-size:13px;
@@ -638,24 +651,69 @@ function foldRemainingIntoGroupTwo(wheelOrder, remaining, seededRunnerUp, halfSi
   return { wheelOrder: filled, remaining: [], seededRunnerUp: null };
 }
 
-function roundRobinPairs(players) {
-  const pairs = [];
+// Builds a full round-robin schedule using the standard "circle method",
+// but instead of returning a flat list of pairs, it returns an array of
+// ROUNDS — each round is the set of matches that can be played simultaneously
+// on that matchday, plus who (if anyone) sits out ("bye") that round.
+// With an odd number of players, the bye rotates fairly across players from
+// round to round (this falls naturally out of the circle method itself,
+// since a different player lands on the fixed "null" slot each round).
+function roundRobinRounds(players) {
   const list = [...players];
-  if (list.length % 2 !== 0) list.push(null);
+  const hasOddCount = list.length % 2 !== 0;
+  if (hasOddCount) list.push(null); // null = "bye" placeholder seat
   const n = list.length;
-  const rounds = n - 1;
+  const totalRounds = n - 1;
   const arr = [...list];
-  for (let r = 0; r < rounds; r++) {
+  const rounds = [];
+
+  for (let r = 0; r < totalRounds; r++) {
+    const roundMatches = [];
+    let byePlayer = null;
     for (let i = 0; i < n / 2; i++) {
       const p1 = arr[i], p2 = arr[n - 1 - i];
-      if (p1 && p2) pairs.push([p1, p2]);
+      if (p1 && p2) {
+        roundMatches.push([p1, p2]);
+      } else {
+        // whichever real player got paired with the null seat this round sits out
+        byePlayer = p1 || p2;
+      }
     }
+    rounds.push({ matches: roundMatches, bye: byePlayer });
+
     const fixed = arr[0];
     const rest = arr.slice(1);
     rest.unshift(rest.pop());
     arr.splice(0, arr.length, fixed, ...rest);
   }
+  return rounds;
+}
+
+// Back-compat flat version (still used anywhere a plain pair list is needed).
+function roundRobinPairs(players) {
+  const rounds = roundRobinRounds(players);
+  const pairs = [];
+  rounds.forEach((r) => pairs.push(...r.matches));
   return pairs;
+}
+
+// Builds the match objects used throughout the app (matchesA, matchesB,
+// singleMatches), each tagged with its round number and, for rounds with an
+// odd player out, who has the bye that round. This is the single place that
+// turns a player list into a schedule, so every stage (single group, group A,
+// group B) is built the exact same way.
+function buildRoundRobinMatches(players) {
+  const rounds = roundRobinRounds(players);
+  const matches = [];
+  const roundByes = {}; // roundNumber (1-indexed) -> player object who sits out, if any
+  rounds.forEach((round, idx) => {
+    const roundNumber = idx + 1;
+    if (round.bye) roundByes[roundNumber] = round.bye;
+    round.matches.forEach(([a, b]) => {
+      matches.push({ id: uid(), a, b, scoreA: null, scoreB: null, round: roundNumber });
+    });
+  });
+  return { matches, roundByes, totalRounds: rounds.length };
 }
 
 function standingsFor(players, matches, tiebreakLog) {
@@ -930,10 +988,13 @@ const syncBadge = document.getElementById("syncBadge");
 let pendingWrites = 0;
 
 async function persist(next) {
+  // Increment BEFORE anything else (including render()) so there is zero
+  // window where a concurrent pollLoad() tick could see pendingWrites === 0
+  // and overwrite this in-flight change with stale server data.
+  pendingWrites++;
   appState = next;
   render();
   syncBadge.textContent = "جارِ الحفظ...";
-  pendingWrites++;
   try {
     await saveState(next);
     syncBadge.textContent = "متصل ✓ آخر تحديث: " + new Date().toLocaleTimeString("ar");
@@ -999,10 +1060,10 @@ async function doAddMember() {
   if (!name || !club) return;
   const isGuest = !!addMemberDraft.isGuest;
   const newMember = { id: uid(), name, club, is_guest: isGuest, confirmed: false, is_core: false, role: "member", pin: "1234" };
+  pendingWrites++;
   members.push(newMember);
   addMemberDraft = { name: "", club: "", isGuest: false }; // clear the form now that it's submitted
   render();
-  pendingWrites++;
   try {
     await insertMember(newMember);
     syncBadge.textContent = "متصل ✓ تمت الإضافة";
@@ -1018,9 +1079,9 @@ window.addMember = function() { requirePermission("member", doAddMember); };
 async function doToggleConfirm(id) {
   const m = members.find(x => x.id === id);
   if (!m) return;
+  pendingWrites++;
   m.confirmed = !m.confirmed;
   render();
-  pendingWrites++;
   try {
     await updateMember(id, { confirmed: m.confirmed });
     if (m.confirmed) {
@@ -1050,9 +1111,9 @@ async function doRemoveMember(id) {
     alert("هذا عضو أساسي بقائمة الفريق ولا يمكن حذفه إلا من مشرف.");
     return;
   }
+  pendingWrites++;
   members = members.filter(m => m.id !== id);
   render();
-  pendingWrites++;
   try {
     await deleteMember(id);
   } catch (e) {
@@ -1100,6 +1161,8 @@ function startNewTournament() {
     ? foldRemainingIntoGroupTwo(initialWheelOrder, initialRemaining, seededRunnerUp, halfSize)
     : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
 
+  const singleBuild = groupMode === "one" ? buildRoundRobinMatches(shuffle(allPlayers)) : null;
+
   const base = {
     id: uid(), name, groupMode,
     stage: groupMode === "two" ? "wheel" : "single",
@@ -1112,9 +1175,9 @@ function startNewTournament() {
     remaining: folded.remaining,
     groupA: [], groupB: [],
     matchesA: [], matchesB: [],
-    singleMatches: groupMode === "one"
-      ? roundRobinPairs(shuffle(allPlayers)).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null }))
-      : [],
+    singleMatches: singleBuild ? singleBuild.matches : [],
+    singleRoundByes: singleBuild ? singleBuild.roundByes : {},
+    singleTotalRounds: singleBuild ? singleBuild.totalRounds : 0,
     semis: null, final: null, tiebreakLog: [],
   };
   wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1156,10 +1219,10 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
 
 async function doEndPlayDay() {
   if (!confirm("هل تبي تنهي يوم اللعب؟ راح تتصفر كل التأكيدات ويتحذف الضيوف المؤقتين، وتحتاجون تأكيد جديد لأي يوم لعب قادم.")) return;
+  pendingWrites++;
   members.forEach(m => (m.confirmed = false));
   members = members.filter(m => !m.is_guest);
   render();
-  pendingWrites++;
   try {
     await unconfirmAllMembers();
     await deleteConfirmedGuests();
@@ -1344,10 +1407,16 @@ function proceedToGroups() {
   const halfSize = Math.ceil(cur.players.length / 2);
   const gA = cur.wheelOrder.slice(0, halfSize);
   const gB = cur.wheelOrder.slice(halfSize);
+  const buildA = buildRoundRobinMatches(gA);
+  const buildB = buildRoundRobinMatches(gB);
   updateCurrent({
     stage: "groups", groupA: gA, groupB: gB,
-    matchesA: roundRobinPairs(gA).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null })),
-    matchesB: roundRobinPairs(gB).map(([a,b]) => ({ id:uid(), a, b, scoreA:null, scoreB:null })),
+    matchesA: buildA.matches,
+    matchesB: buildB.matches,
+    groupARoundByes: buildA.roundByes,
+    groupBRoundByes: buildB.roundByes,
+    groupATotalRounds: buildA.totalRounds,
+    groupBTotalRounds: buildB.totalRounds,
   });
 }
 
@@ -1376,6 +1445,27 @@ function goToKnockout() {
     },
     tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
     fullStandings: [...finalTableA, ...finalTableB],
+    promotedNames,
+  });
+}
+
+// Single-group mode: top 4 of the overall table advance. Standard seeding
+// crossover — 1st vs 4th, 2nd vs 3rd — so the top seed doesn't face the
+// strongest remaining opponent in the first knockout round.
+function goToKnockoutFromSingle() {
+  const cur = appState.current;
+  const log = [];
+  const finalTable = standingsFor(cur.players, cur.singleMatches, log);
+  const [p1, p2, p3, p4] = finalTable;
+  const promotedNames = [p1?.name, p2?.name, p3?.name, p4?.name].filter(Boolean);
+  updateCurrent({
+    stage: "knockout",
+    semis: {
+      m1: { id:uid(), label:"نصف النهائي 1", a:p1, b:p4, scoreA:null, scoreB:null },
+      m2: { id:uid(), label:"نصف النهائي 2", a:p2, b:p3, scoreA:null, scoreB:null },
+    },
+    tiebreakLog: [...(cur.tiebreakLog || []), ...log],
+    fullStandings: finalTable,
     promotedNames,
   });
 }
@@ -1624,20 +1714,45 @@ function scoreTableHtml(table) {
   </table>`;
 }
 
-function groupPanelHtml(title, matches, whichKey, table) {
-  const matchRows = matches.map(m => `
-    <div class="match-row">
-      <span class="match-name">${escapeHtml(m.a.name)}</span>
-      ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
-      <span class="vs">–</span>
-      ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
-      <span class="match-name">${escapeHtml(m.b.name)}</span>
-    </div>`).join("");
+function groupPanelHtml(title, matches, whichKey, table, roundByes) {
+  // Group matches by round number so they can be rendered as separate
+  // "جولة" sections with a visual divider between them, matching how the
+  // matches would actually be played matchday by matchday.
+  const byRound = {};
+  matches.forEach((m) => {
+    const r = m.round || 1;
+    byRound[r] = byRound[r] || [];
+    byRound[r].push(m);
+  });
+  const roundNumbers = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+
+  const roundsHtml = roundNumbers.map((roundNum) => {
+    const roundMatches = byRound[roundNum];
+    const matchRows = roundMatches.map(m => `
+      <div class="match-row">
+        <span class="match-name">${escapeHtml(m.a.name)}</span>
+        ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
+        <span class="vs">–</span>
+        ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
+        <span class="match-name">${escapeHtml(m.b.name)}</span>
+      </div>`).join("");
+
+    const byePlayer = roundByes && roundByes[roundNum];
+    const byeHtml = byePlayer
+      ? `<div class="bye-note">💤 ${escapeHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
+      : "";
+
+    return `<div class="round-block">
+      <div class="round-label">الجولة ${roundNum}</div>
+      <div class="match-list">${matchRows}</div>
+      ${byeHtml}
+    </div>`;
+  }).join("");
 
   const boxClass = whichKey === "A" ? "box-a" : whichKey === "B" ? "box-b" : "";
   return `<div class="group-box ${boxClass}">
     <h3 class="group-title">${title}</h3>
-    <div class="match-list">${matchRows}</div>
+    ${roundsHtml}
     ${scoreTableHtml(table)}
   </div>`;
 }
@@ -1654,8 +1769,8 @@ function groupsStageHtml() {
     <div class="section-icon-title"><span class="icon">⚔️</span>دوري المجموعات</div>
     <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
     <div class="two-col">
-      ${groupPanelHtml("المجموعة الأولى 🟢", cur.matchesA, "A", tableA)}
-      ${groupPanelHtml("المجموعة الثانية 🔵", cur.matchesB, "B", tableB)}
+      ${groupPanelHtml("المجموعة الأولى 🟢", cur.matchesA, "A", tableA, cur.groupARoundByes)}
+      ${groupPanelHtml("المجموعة الثانية 🔵", cur.matchesB, "B", tableB, cur.groupBRoundByes)}
     </div>
     <button class="cta-btn" ${!(allAPlayed && allBPlayed) ? "disabled" : ""} onclick="goToKnockout()">الانتقال لنصف النهائي ←</button>
     ${!(allAPlayed && allBPlayed) ? `<div class="empty-note">أكمل جميع نتائج المجموعتين للمتابعة</div>` : ""}
@@ -1666,12 +1781,18 @@ function singleGroupStageHtml() {
   const cur = appState.current;
   const table = standingsFor(cur.players, cur.singleMatches, []);
   const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every(m => m.scoreA != null && m.scoreB != null);
+  const canGoKnockout = allPlayed && cur.players.length >= 4;
+  const notEnoughForKnockout = allPlayed && cur.players.length < 4;
   return `<div class="card theme-groups">
     <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🔀</span>مجموعة واحدة — الكل ضد الكل</div>
-    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة. اختر النتائج من القوائم.</p>
-    ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table)}
-    <button class="cta-btn" ${!allPlayed ? "disabled" : ""} onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button>
+    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث.</p>
+    ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
+    ${notEnoughForKnockout
+      ? `<button class="cta-btn" onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button><div class="empty-note">عدد المشاركين أقل من 4، فما فيه إقصائي — البطل يتحدد من الترتيب العام مباشرة.</div>`
+      : `<button class="cta-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`
+    }
+    ${!allPlayed ? `<div class="empty-note">أكمل جميع نتائج الجدول للمتابعة</div>` : ""}
   </div>`;
 }
 
@@ -1920,6 +2041,7 @@ window.spinWheel = spinWheel; // available to everyone, no login required
 window.proceedToGroups = proceedToGroups; // continuation of the open wheel step, available to everyone
 window.updateMatchField = function(which, matchId, field, value) { requirePermission("admin", () => updateMatchField(which, matchId, field, value)); };
 window.goToKnockout = function() { requirePermission("admin", goToKnockout); };
+window.goToKnockoutFromSingle = function() { requirePermission("admin", goToKnockoutFromSingle); };
 window.updateSemiField = function(key, field, value) { requirePermission("admin", () => updateSemiField(key, field, value)); };
 window.goToFinal = function() { requirePermission("admin", goToFinal); };
 window.updateFinalField = function(field, value) { requirePermission("admin", () => updateFinalField(field, value)); };

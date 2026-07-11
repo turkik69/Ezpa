@@ -448,12 +448,42 @@
     display:flex; align-items:center; gap:8px;
   }
   .section-title::after { content:""; flex:1; height:1px; background: rgba(242,238,227,0.1); }
+
+  /* ---- PDF export (print) ---- */
+  /* Invisible in normal on-screen use; only ever shown to the browser's
+     print engine, right when window.print() is triggered, and hidden again
+     immediately after. Built as plain black-on-white HTML/CSS specifically
+     because client-side PDF libraries (jsPDF etc.) don't shape Arabic text
+     correctly — routing through the browser's native print-to-PDF instead
+     reuses the same text engine already rendering Arabic correctly on
+     screen, so the exported PDF's Arabic is guaranteed to look right. */
+  .pdf-export-area { display:none; }
+  @media print {
+    body * { visibility: hidden; }
+    #pdfExportArea, #pdfExportArea * { visibility: visible; }
+    .floodlight-glow, #app, #syncBadge { display:none !important; }
+    #pdfExportArea {
+      display:block !important; position:absolute; inset:0; background:#fff; color:#111;
+      direction:rtl; font-family:'Tajawal', sans-serif; padding:24px;
+    }
+    #pdfExportArea h1 { font-size:22px; margin-bottom:4px; }
+    #pdfExportArea .pdf-subtitle { font-size:12px; color:#555; margin-bottom:20px; }
+    #pdfExportArea h2 {
+      font-size:15px; margin:22px 0 8px; padding-bottom:4px; border-bottom:2px solid #333;
+    }
+    #pdfExportArea table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:12px; }
+    #pdfExportArea th, #pdfExportArea td { border:1px solid #999; padding:5px 8px; text-align:right; }
+    #pdfExportArea th { background:#eee; }
+    #pdfExportArea .pdf-archive-row { font-size:12px; padding:5px 0; border-bottom:1px solid #ccc; }
+    #pdfExportArea .pdf-section { page-break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
   <div class="floodlight-glow"></div>
   <div id="app"></div>
   <div class="sync-badge" id="syncBadge">جارِ الاتصال...</div>
+  <div id="pdfExportArea" class="pdf-export-area"></div>
 <script>
 // Club logo map: club name (as stored in the members table) -> base64 data URI
 // Club logo map: club name (as stored in the members table) -> base64 data URI
@@ -1386,6 +1416,48 @@ async function doDeleteArchivedTournament(archiveId) {
 }
 window.deleteArchivedTournament = function(archiveId) { requirePermission("admin", () => doDeleteArchivedTournament(archiveId)); };
 
+// Builds one plain black-on-white table for the PDF export (rank, name, value)
+// — a print-safe counterpart to statBlockHtml's colored on-screen version.
+function pdfStatTableHtml(title, rows, valueKey, suffix) {
+  if (!rows || rows.length === 0) return "";
+  const rowsHtml = rows.map((r, i) => `
+    <tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td>${r[valueKey]} ${suffix}</td></tr>
+  `).join("");
+  return `<div class="pdf-section">
+    <h2>${escapeHtml(title)}</h2>
+    <table><thead><tr><th>#</th><th>اللاعب</th><th>القيمة</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+  </div>`;
+}
+
+function doExportStatsAndArchiveToPdf() {
+  const archive = appState.archive || [];
+  const stats = computeHistoricalStats(archive);
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("ar-SA-u-ca-gregory", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  let html = `
+    <h1>دوري أبطال العزبة — تقرير التصنيفات والأرشيف</h1>
+    <div class="pdf-subtitle">تاريخ التصدير: ${escapeHtml(dateStr)} — إجمالي البطولات المكتملة: ${archive.length}</div>
+    ${pdfStatTableHtml("الأكثر تتويجاً", stats.mostTitles, "titles", "لقب")}
+    ${pdfStatTableHtml("الأكثر تسجيلاً للأهداف", stats.mostGoalsScored, "goalsScored", "هدف")}
+    ${pdfStatTableHtml("الأكثر تلقياً للأهداف", stats.mostGoalsConceded, "goalsConceded", "هدف")}
+    ${pdfStatTableHtml("الأكثر وصافة", stats.mostRunnerUps, "runnerUps", "مرة")}
+    ${pdfStatTableHtml("الأكثر صعوداً للنهائي", stats.mostFinalAppearances, "finalAppearances", "مرة")}
+    ${pdfStatTableHtml("الأقل صعوداً من مجموعته", stats.leastPromotions, "missedPromotions", "مرة عدم صعود")}
+    <div class="pdf-section">
+      <h2>أرشيف البطولات (${archive.length})</h2>
+      ${archive.slice().reverse().map(t => `
+        <div class="pdf-archive-row"><strong>${escapeHtml(t.name)}</strong> — بطل: ${escapeHtml(t.champion || "—")} | وصيف: ${escapeHtml(t.runnerUp || "—")}</div>
+      `).join("")}
+    </div>
+  `;
+
+  const area = document.getElementById("pdfExportArea");
+  area.innerHTML = html;
+  window.print();
+}
+window.exportStatsAndArchiveToPdf = function() { requirePermission("admin", doExportStatsAndArchiveToPdf); };
+
 // Discard the tournament currently in progress (any stage, even unfinished),
 // without archiving it. Admin-only, since it destroys other members' entered
 // results.
@@ -2109,6 +2181,7 @@ function statsPanelHtml(archive, compact) {
   const stats = computeHistoricalStats(archive);
   let html = `<div class="${wrapClass}">
     ${compact ? `<h3 class="group-title">التصنيفات التاريخية (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية (${archive.length} بطولة مكتملة)</div>`}
+    ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()">📄 تصدير التصنيفات والأرشيف PDF</button>` : ""}
     ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
     ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
     ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}

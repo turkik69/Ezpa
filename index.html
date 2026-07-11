@@ -1714,23 +1714,40 @@ function computeHistoricalStats(archive) {
   const perPlayer = {};
   const ensure = (name) => {
     if (!perPlayer[name]) {
-      perPlayer[name] = { name, titles:0, goalsScored:0, goalsConceded:0, promotions:0, runnerUps:0, finalAppearances:0, appearances:0 };
+      perPlayer[name] = { name, titles:0, goalsScored:0, goalsConceded:0, promotions:0, runnerUps:0, finalAppearances:0, appearances:0, knockoutEligibleAppearances:0 };
     }
     return perPlayer[name];
   };
   archive.forEach((t) => {
     if (t.champion) { ensure(t.champion).titles++; ensure(t.champion).finalAppearances++; }
     if (t.runnerUp) { ensure(t.runnerUp).runnerUps++; ensure(t.runnerUp).finalAppearances++; }
+    // A tournament only ever had a real knockout bracket (and therefore
+    // "didn't advance" only means something) when promotedNames was
+    // populated — that field is set exclusively by the two knockout-
+    // qualifying code paths (two-group draw, or single-group with >=4
+    // players). Small single-group tournaments (fewer than 4 players) skip
+    // the knockout stage entirely and finish straight from the table, so
+    // nobody there should be counted as having "failed" to advance — there
+    // was never a bracket to advance into in the first place.
+    const hadKnockoutStage = (t.promotedNames || []).length > 0;
     (t.players || []).forEach((p) => {
       const s = ensure(p.name);
       s.goalsScored += p.gf || 0; s.goalsConceded += p.ga || 0; s.appearances++;
+      if (hadKnockoutStage) s.knockoutEligibleAppearances++;
     });
     (t.promotedNames || []).forEach((name) => ensure(name).promotions++);
   });
   const list = Object.values(perPlayer);
   const topBy = (key, count=5) => [...list].sort((a,b) => b[key]-a[key]).filter(x => x[key] > 0).slice(0, count);
-  const leastPromotions = [...list].filter(x => x.appearances >= 2)
-    .sort((a,b) => a.promotions - b.promotions || b.appearances - a.appearances).slice(0, 5);
+  // "Least promoted" is ranked by how many times a player took part in a
+  // group stage that actually HAD a knockout bracket but didn't make the
+  // cut — not by raw promotion count, which unfairly favored/penalized
+  // players just for playing fewer or more tournaments overall.
+  const leastPromotions = list
+    .map(x => ({ ...x, missedPromotions: x.knockoutEligibleAppearances - x.promotions }))
+    .filter(x => x.knockoutEligibleAppearances >= 2 && x.missedPromotions > 0)
+    .sort((a,b) => b.missedPromotions - a.missedPromotions || b.knockoutEligibleAppearances - a.knockoutEligibleAppearances)
+    .slice(0, 5);
   return {
     mostTitles: topBy("titles"),
     mostGoalsScored: topBy("goalsScored"),
@@ -2097,7 +2114,7 @@ function statsPanelHtml(archive, compact) {
     ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
     ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
     ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
-    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"promotions","مرة صعود")}`;
+    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة عدم صعود")}`;
   if (!compact) {
     html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon">🗂️</span>أرشيف البطولات</div>
       <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;

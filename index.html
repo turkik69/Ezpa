@@ -419,6 +419,23 @@
   }
   .color-swatch:hover { transform: scale(1.1); }
   .color-swatch.selected { border-color:#F2EEE3; box-shadow: 0 0 0 2px rgba(10,24,48,0.9), 0 0 0 4px #F2EEE3; }
+
+  .prediction-group-box {
+    background: rgba(242,238,227,0.03); border:1px solid rgba(242,238,227,0.1);
+    border-radius:10px; padding:14px; margin-bottom:12px;
+  }
+  .prediction-group-title { font-size:13px; font-weight:800; color:#C9A2F0; margin-bottom:10px; }
+  .prediction-check-row {
+    display:flex; align-items:center; gap:8px; padding:7px 2px; font-size:13.5px; cursor:pointer;
+  }
+  .prediction-check-row input[type="checkbox"] { width:17px; height:17px; flex-shrink:0; accent-color:#C9A2F0; }
+  .predictions-list { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+  .prediction-row {
+    background: rgba(242,238,227,0.03); border-radius:8px; padding:10px 12px;
+    border-right:3px solid rgba(201,162,240,0.5);
+  }
+  .prediction-row-name { font-weight:800; font-size:13.5px; margin-bottom:4px; }
+  .prediction-row-picks { font-size:11.5px; color: rgba(242,238,227,0.6); line-height:1.6; }
   .club-logo { width:18px; height:18px; object-fit:contain; flex-shrink:0; }
   .club-logo.club-logo-sm { width:14px; height:14px; }
   .club-logo.club-logo-lg { width:24px; height:24px; }
@@ -508,6 +525,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const STATE_ROW_ID = "ezba-league-main";
 const REST_URL = SUPABASE_URL + "/rest/v1/ezba_league_state";
 const MEMBERS_URL = SUPABASE_URL + "/rest/v1/ezba_league_members";
+const PREDICTIONS_URL = SUPABASE_URL + "/rest/v1/ezba_predictions";
 
 async function fetchState() {
   const res = await fetch(REST_URL + "?id=eq." + STATE_ROW_ID + "&select=data", {
@@ -594,6 +612,27 @@ async function deleteConfirmedGuests() {
     headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
   });
   if (!res.ok) { const t = await res.text(); throw new Error("delete guests failed: " + t); }
+}
+
+// ============ Predictions ============
+async function fetchPredictions() {
+  const res = await fetch(PREDICTIONS_URL + "?select=*", {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+  });
+  if (!res.ok) throw new Error("fetch predictions failed: " + res.status);
+  return await res.json();
+}
+
+async function upsertPrediction(pred) {
+  const res = await fetch(PREDICTIONS_URL + "?on_conflict=tournament_id,member_id", {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify(pred),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error("save prediction failed: " + t); }
 }
 
 // ============ Push notifications ============
@@ -940,6 +979,10 @@ function scoreSelectHtml(value, onchangeAttr) {
 const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
 let appState = emptyState();
 let members = []; // [{id, name, club, is_guest, confirmed, role, pin}]
+let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_group_a, predicted_group_b, predicted_top4, predicted_finalists, predicted_champion}]
+// Draft state for the prediction form (mirrors the addMemberDraft pattern —
+// tracked here so a background poll re-render never wipes in-progress picks).
+let predictionDraft = null; // null | { groupA:[], groupB:[], top4:[], finalists:[], champion:null }
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
 let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1111,6 +1154,77 @@ window.submitCustomization = async function() {
   }
 };
 
+window.togglePredictionPick = function(category, name, maxCount) {
+  if (!requirePermission("member")) return;
+  if (!predictionDraft) return;
+  const arr = predictionDraft[category];
+  const idx = arr.indexOf(name);
+  if (idx >= 0) {
+    arr.splice(idx, 1);
+  } else {
+    if (arr.length >= maxCount) {
+      alert(`تقدر تختار ${maxCount} بس بهذي الفئة. ألغِ اختيار وحد أول لو تبي تبدّل.`);
+      return;
+    }
+    arr.push(name);
+  }
+  render();
+};
+
+window.setPredictionChampion = function(name) {
+  if (!requirePermission("member")) return;
+  if (!predictionDraft) return;
+  predictionDraft.champion = name || null;
+  render();
+};
+
+window.submitPrediction = async function() {
+  if (!requirePermission("member")) return;
+  const cur = appState.current;
+  if (!cur || predictionsLocked(cur)) { alert("التوقعات مقفولة الحين، بدأت النتائج تنحسب."); return; }
+  const draft = predictionDraft;
+  const user = getCurrentUser();
+  if (!draft || !user) return;
+
+  if (cur.groupMode === "two") {
+    if (draft.groupA.length !== 2 || draft.groupB.length !== 2) {
+      alert("لازم تختار لاعبين بالضبط من كل مجموعة.");
+      return;
+    }
+  } else {
+    if (draft.top4.length !== 4) {
+      alert("لازم تختار أربعة لاعبين بالضبط للصاعدين.");
+      return;
+    }
+  }
+  if (draft.finalists.length !== 2) { alert("لازم تختار لاعبين بالضبط لطرفي النهائي."); return; }
+  if (!draft.champion) { alert("لازم تختار توقع البطل."); return; }
+
+  const existing = myPrediction(cur.id);
+  const record = {
+    id: existing ? existing.id : uid(),
+    tournament_id: cur.id,
+    member_id: user.id,
+    member_name: user.name,
+    predicted_group_a: cur.groupMode === "two" ? draft.groupA : null,
+    predicted_group_b: cur.groupMode === "two" ? draft.groupB : null,
+    predicted_top4: cur.groupMode === "one" ? draft.top4 : null,
+    predicted_finalists: draft.finalists,
+    predicted_champion: draft.champion,
+  };
+
+  const idx = predictions.findIndex(p => p.tournament_id === cur.id && p.member_id === user.id);
+  if (idx >= 0) predictions[idx] = record; else predictions.push(record);
+  render();
+  try {
+    await upsertPrediction(record);
+    syncBadge.textContent = "تم حفظ توقعك ✓";
+  } catch (e) {
+    console.error(e);
+    syncBadge.textContent = "تعذر حفظ التوقع، حاول مرة ثانية";
+  }
+};
+
 
 window.enablePushForThisDevice = async function() {
   const result = await subscribeCurrentUserToPush();
@@ -1181,10 +1295,11 @@ function isUserInteractingWithInput() {
 async function pollLoad() {
   if (pendingWrites > 0) return; // a local change is still being saved, skip this cycle
   try {
-    const [data, mem] = await Promise.all([fetchState(), fetchMembers()]);
+    const [data, mem, preds] = await Promise.all([fetchState(), fetchMembers(), fetchPredictions()]);
     if (pendingWrites > 0) return; // a write started while we were fetching, discard this snapshot
     if (data && !wheelUi.spinning) appState = data;
     members = mem;
+    predictions = preds;
     // Don't tear down and rebuild the DOM while the user has any field
     // focused (a text input being typed into, or a score dropdown open) —
     // that would wipe out what they're typing or force-close the dropdown
@@ -1357,12 +1472,18 @@ function updateCurrent(patch) {
 async function finishTournament(champion, runnerUp, semifinalistsOut, finalStandingsAll) {
   const cur = appState.current;
   const archiveEntry = {
-    id: uid(), name: cur.name,
+    // Reuse the live tournament's own id (instead of generating a new one)
+    // so predictions saved against this tournament while it was live —
+    // keyed by this same id — stay correctly linked to it after archiving.
+    id: cur.id, name: cur.name,
     champion: champion?.name || null,
     runnerUp: runnerUp?.name || null,
     semifinalists: semifinalistsOut.map(p => p?.name).filter(Boolean),
     players: finalStandingsAll,
     promotedNames: cur.promotedNames || [],
+    promotedGroupA: cur.promotedGroupA || null,
+    promotedGroupB: cur.promotedGroupB || null,
+    promotedTop4: cur.promotedTop4 || null,
   };
   // Confirmations are NOT reset here. Several tournaments can happen in the
   // same play day, so the confirmed list stays until the user explicitly
@@ -1715,6 +1836,11 @@ function doGoToKnockout() {
     tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
     fullStandings: [...finalTableA, ...finalTableB],
     promotedNames,
+    // Explicit per-group split (rather than relying on promotedNames' array
+    // order) so prediction scoring can check "did they pick the right 2 for
+    // Group A" independently from Group B, unambiguously.
+    promotedGroupA: [a1?.name, a2?.name].filter(Boolean),
+    promotedGroupB: [b1?.name, b2?.name].filter(Boolean),
   });
 }
 
@@ -1736,6 +1862,7 @@ function doGoToKnockoutFromSingle() {
     tiebreakLog: [...(cur.tiebreakLog || []), ...log],
     fullStandings: finalTable,
     promotedNames,
+    promotedTop4: promotedNames.slice(),
   });
 }
 
@@ -1782,6 +1909,83 @@ function doFinishSingleGroup() {
 }
 
 // ============ Historical stats ============
+// ============ Predictions logic ============
+// Predictions lock the instant the first match score is entered anywhere in
+// the tournament — before that, nothing is decided yet so it's a genuine
+// blind guess; after that, results start leaking information, so further
+// changes would just be "predicting" what's already partly known.
+function predictionsLocked(cur) {
+  if (!cur) return true;
+  const allMatches = [...(cur.matchesA || []), ...(cur.matchesB || []), ...(cur.singleMatches || [])];
+  return allMatches.some(m => m.scoreA != null || m.scoreB != null);
+}
+
+// Whether this tournament format even has predictable structure. Tiny
+// single-group tournaments (fewer than 4 players) finish straight from the
+// table with no knockout bracket at all, so there's nothing meaningful to
+// predict (no promotion, no final).
+function predictionsSupported(cur) {
+  if (!cur) return false;
+  if (cur.groupMode === "two") return true;
+  return cur.groupMode === "one" && (cur.players || []).length >= 4;
+}
+
+function myPrediction(tournamentId) {
+  const user = getCurrentUser();
+  if (!user) return null;
+  return predictions.find(p => p.tournament_id === tournamentId && p.member_id === user.id) || null;
+}
+
+// Scores one saved prediction against one archived (finished) tournament.
+// Returns total points plus a per-category breakdown for display.
+function computePredictionPoints(archiveEntry, prediction) {
+  let points = 0;
+  const details = [];
+
+  if (archiveEntry.promotedGroupA && prediction.predicted_group_a) {
+    const correct = prediction.predicted_group_a.filter(n => archiveEntry.promotedGroupA.includes(n));
+    points += correct.length * 1;
+    details.push({ label: "صعود المجموعة الأولى", correct: correct.length, total: archiveEntry.promotedGroupA.length });
+  }
+  if (archiveEntry.promotedGroupB && prediction.predicted_group_b) {
+    const correct = prediction.predicted_group_b.filter(n => archiveEntry.promotedGroupB.includes(n));
+    points += correct.length * 1;
+    details.push({ label: "صعود المجموعة الثانية", correct: correct.length, total: archiveEntry.promotedGroupB.length });
+  }
+  if (archiveEntry.promotedTop4 && prediction.predicted_top4) {
+    const correct = prediction.predicted_top4.filter(n => archiveEntry.promotedTop4.includes(n));
+    points += correct.length * 1;
+    details.push({ label: "الصاعدون للإقصائي", correct: correct.length, total: archiveEntry.promotedTop4.length });
+  }
+  const actualFinalists = [archiveEntry.champion, archiveEntry.runnerUp].filter(Boolean);
+  if (prediction.predicted_finalists && actualFinalists.length === 2) {
+    const correct = prediction.predicted_finalists.filter(n => actualFinalists.includes(n));
+    points += correct.length * 2;
+    details.push({ label: "طرفا النهائي", correct: correct.length, total: 2 });
+  }
+  if (prediction.predicted_champion && archiveEntry.champion) {
+    const correct = prediction.predicted_champion === archiveEntry.champion;
+    if (correct) points += 5;
+    details.push({ label: "البطل", correct: correct ? 1 : 0, total: 1 });
+  }
+  return { points, details };
+}
+
+// Cumulative prediction leaderboard across every finished tournament that
+// had predictions saved against it.
+function computePredictionLeaderboard(archive, allPredictions) {
+  const perPlayer = {};
+  archive.forEach((t) => {
+    const tPreds = allPredictions.filter(p => p.tournament_id === t.id);
+    tPreds.forEach((p) => {
+      const { points } = computePredictionPoints(t, p);
+      if (!perPlayer[p.member_name]) perPlayer[p.member_name] = { name: p.member_name, predictionPoints: 0 };
+      perPlayer[p.member_name].predictionPoints += points;
+    });
+  });
+  return Object.values(perPlayer).sort((a, b) => b.predictionPoints - a.predictionPoints).filter(x => x.predictionPoints > 0).slice(0, 5);
+}
+
 function computeHistoricalStats(archive) {
   const perPlayer = {};
   const ensure = (name) => {
@@ -2138,6 +2342,116 @@ function knockoutStageHtml() {
   </div>`;
 }
 
+function predictionCheckboxRow(category, name, checked, maxCount) {
+  const safeName = escapeHtml(name).replace(/'/g, "\\'");
+  return `<label class="prediction-check-row">
+    <input type="checkbox" ${checked ? "checked" : ""} onchange="togglePredictionPick('${category}','${safeName}',${maxCount})">
+    ${coloredNameHtml(name)}
+  </label>`;
+}
+
+function ensurePredictionDraft(cur) {
+  if (!predictionDraft || predictionDraft.tournamentId !== cur.id) {
+    const existing = myPrediction(cur.id);
+    predictionDraft = {
+      tournamentId: cur.id,
+      groupA: existing?.predicted_group_a ? [...existing.predicted_group_a] : [],
+      groupB: existing?.predicted_group_b ? [...existing.predicted_group_b] : [],
+      top4: existing?.predicted_top4 ? [...existing.predicted_top4] : [],
+      finalists: existing?.predicted_finalists ? [...existing.predicted_finalists] : [],
+      champion: existing?.predicted_champion || null,
+    };
+  }
+  return predictionDraft;
+}
+
+function predictionFormHtml(cur, draft) {
+  let groupsHtml = "";
+  if (cur.groupMode === "two") {
+    const groupARows = cur.groupA.map(p => predictionCheckboxRow("groupA", p.name, draft.groupA.includes(p.name), 2)).join("");
+    const groupBRows = cur.groupB.map(p => predictionCheckboxRow("groupB", p.name, draft.groupB.includes(p.name), 2)).join("");
+    groupsHtml = `
+      <div class="prediction-group-box">
+        <div class="prediction-group-title">مين راح يصعد من المجموعة الأولى؟ (اختر 2)</div>
+        ${groupARows}
+      </div>
+      <div class="prediction-group-box">
+        <div class="prediction-group-title">مين راح يصعد من المجموعة الثانية؟ (اختر 2)</div>
+        ${groupBRows}
+      </div>`;
+  } else {
+    const top4Rows = cur.players.map(p => predictionCheckboxRow("top4", p.name, draft.top4.includes(p.name), 4)).join("");
+    groupsHtml = `
+      <div class="prediction-group-box">
+        <div class="prediction-group-title">مين الأربعة اللي راح يصعدون للإقصائي؟ (اختر 4)</div>
+        ${top4Rows}
+      </div>`;
+  }
+
+  const finalistRows = cur.players.map(p => predictionCheckboxRow("finalists", p.name, draft.finalists.includes(p.name), 2)).join("");
+  const championOptions = cur.players.map(p => `<option value="${escapeHtml(p.name)}" ${draft.champion === p.name ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("");
+
+  return `
+    ${groupsHtml}
+    <div class="prediction-group-box">
+      <div class="prediction-group-title">مين راح يكونون بالنهائي؟ (اختر 2)</div>
+      ${finalistRows}
+    </div>
+    <div class="prediction-group-box">
+      <div class="prediction-group-title">مين راح يكون البطل؟</div>
+      <select class="text-input" onchange="setPredictionChampion(this.value)">
+        <option value="">— اختر —</option>
+        ${championOptions}
+      </select>
+    </div>
+    <button class="cta-btn" onclick="submitPrediction()">${myPrediction(cur.id) ? "تحديث توقعي" : "حفظ توقعي"}</button>
+  `;
+}
+
+function predictionsListHtml(tournamentPreds) {
+  if (tournamentPreds.length === 0) {
+    return `<div class="empty-note">ولا أحد سجل توقعه بعد</div>`;
+  }
+  return `<div class="predictions-list">` + tournamentPreds.map(p => {
+    const parts = [];
+    if (p.predicted_group_a) parts.push(`مجموعة 1: ${p.predicted_group_a.map(n => coloredNameHtml(n)).join("، ")}`);
+    if (p.predicted_group_b) parts.push(`مجموعة 2: ${p.predicted_group_b.map(n => coloredNameHtml(n)).join("، ")}`);
+    if (p.predicted_top4) parts.push(`الصاعدون: ${p.predicted_top4.map(n => coloredNameHtml(n)).join("، ")}`);
+    if (p.predicted_finalists) parts.push(`النهائي: ${p.predicted_finalists.map(n => coloredNameHtml(n)).join("، ")}`);
+    if (p.predicted_champion) parts.push(`البطل: ${coloredNameHtml(p.predicted_champion)}`);
+    return `<div class="prediction-row">
+      <div class="prediction-row-name">${coloredNameHtml(p.member_name)}</div>
+      <div class="prediction-row-picks">${parts.join(" · ")}</div>
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+function predictionsSectionHtml(cur) {
+  if (!predictionsSupported(cur)) return "";
+  if (cur.stage === "wheel") return "";
+
+  const locked = predictionsLocked(cur);
+  const tournamentPreds = predictions.filter(p => p.tournament_id === cur.id);
+
+  let bodyHtml;
+  if (locked) {
+    bodyHtml = `<p class="hint">🔒 التوقعات مقفولة (بدأت النتائج تنحسب). توقعات الجميع:</p>` + predictionsListHtml(tournamentPreds);
+  } else {
+    const user = getCurrentUser();
+    if (!user) {
+      bodyHtml = `<p class="hint">سجّل دخولك عشان تسجل توقعك لهذي البطولة.</p><button class="cta-btn" onclick="openLogin()">تسجيل الدخول</button>`;
+    } else {
+      const draft = ensurePredictionDraft(cur);
+      bodyHtml = predictionFormHtml(cur, draft) + `<div class="archive-divider"></div>` + predictionsListHtml(tournamentPreds);
+    }
+  }
+
+  return `<div class="card theme-members" style="margin-top:20px;">
+    <div class="section-icon-title"><span class="icon">🔮</span>توقعات المشاركين</div>
+    ${bodyHtml}
+  </div>`;
+}
+
 function tournamentFlowHtml() {
   const cur = appState.current;
   if (!cur) return registerStageHtml();
@@ -2154,7 +2468,7 @@ function tournamentFlowHtml() {
       </button>
     </div>`;
 
-  return stageHtml + discardBar;
+  return stageHtml + predictionsSectionHtml(cur) + discardBar;
 }
 
 // ============ Stats panel ============
@@ -2179,6 +2493,7 @@ function statsPanelHtml(archive, compact) {
     </div>`;
   }
   const stats = computeHistoricalStats(archive);
+  const predictionLeaderboard = computePredictionLeaderboard(archive, predictions);
   let html = `<div class="${wrapClass}">
     ${compact ? `<h3 class="group-title">التصنيفات التاريخية (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية (${archive.length} بطولة مكتملة)</div>`}
     ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()">📄 تصدير التصنيفات والأرشيف PDF</button>` : ""}
@@ -2187,16 +2502,26 @@ function statsPanelHtml(archive, compact) {
     ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
     ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
     ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
-    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة عدم صعود")}`;
+    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة عدم صعود")}
+    ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard,"predictionPoints","نقطة")}`;
   if (!compact) {
     html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon">🗂️</span>أرشيف البطولات</div>
       <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
-    html += archive.slice().reverse().map(t => `
+    html += archive.slice().reverse().map(t => {
+      const tPreds = predictions.filter(p => p.tournament_id === t.id);
+      const predRecap = tPreds.length > 0
+        ? `<div class="prediction-row-picks" style="margin-top:4px;">🔮 ${tPreds.map(p => {
+            const { points } = computePredictionPoints(t, p);
+            return `${escapeHtml(p.member_name)} (${points})`;
+          }).join("، ")}</div>`
+        : "";
+      return `
       <div class="archive-row" style="display:flex; align-items:center; gap:10px;">
-        <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${t.champion ? coloredNameHtml(t.champion) : "—"} | وصيف: ${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}</span>
+        <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${t.champion ? coloredNameHtml(t.champion) : "—"} | وصيف: ${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}${predRecap}</span>
         <button class="cta-btn danger" style="width:auto; margin:0; padding:8px 14px; font-size:12px;" onclick="deleteArchivedTournament('${t.id}')">حذف هذه البطولة</button>
       </div>
-    `).join("");
+    `;
+    }).join("");
   }
   html += `</div>`;
   return html;

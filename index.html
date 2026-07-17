@@ -308,7 +308,11 @@
   }
 
   .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
-  @media (max-width: 560px) { .two-col { grid-template-columns:1fr; } }
+  /* Groups stay side-by-side on every screen size — this used to collapse to
+     one column under 560px (which is most phones in portrait), but that
+     made the two groups look completely different for most people than for
+     whoever had a wider screen/tablet. Instead, a tight-screens media query
+     below compresses padding/fonts so both columns keep fitting together. */
 
   .group-box {
     background: rgba(242,238,227,0.03); border:1.5px solid rgba(242,238,227,0.12);
@@ -493,6 +497,32 @@
     #pdfExportArea th { background:#eee; }
     #pdfExportArea .pdf-archive-row { font-size:12px; padding:5px 0; border-bottom:1px solid #ccc; }
     #pdfExportArea .pdf-section { page-break-inside: avoid; }
+  }
+
+  /* ---- Tight-screen compression ---- */
+  /* Keeps the two-group layout (schedule + standings table) genuinely
+     side-by-side on ordinary phones instead of stacking, by trimming outer
+     padding and internal spacing/fonts just enough for both columns to
+     still fit comfortably without horizontal scrolling. */
+  @media (max-width: 480px) {
+    body { padding-left:12px; padding-right:12px; }
+    .card { padding-left:12px; padding-right:12px; }
+    .two-col { gap:8px; }
+    .group-box { padding:8px; }
+    .group-title { font-size:11.5px; margin-bottom:8px; padding-bottom:6px; }
+    .round-label { font-size:9.5px; margin-bottom:6px; }
+    .match-list { gap:5px; margin-bottom:10px; }
+    .match-row { gap:3px; padding:7px 5px; font-size:10.5px; }
+    .match-name { font-size:10.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .score-select {
+      width:30px; padding:5px 1px; font-size:11.5px;
+      background-position: left 2px center; background-size:8px 5px;
+    }
+    .vs { font-size:10px; }
+    table.score-table { font-size:9px; }
+    table.score-table th, table.score-table td { padding:5px 1px; }
+    table.score-table th { font-size:8.5px; }
+    .bye-note { font-size:10px; }
   }
 </style>
 </head>

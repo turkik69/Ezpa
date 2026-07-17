@@ -1182,9 +1182,16 @@ window.submitPrediction = async function() {
   if (!requirePermission("member")) return;
   const cur = appState.current;
   if (!cur || predictionsLocked(cur)) { alert("التوقعات مقفولة الحين، بدأت النتائج تنحسب."); return; }
-  const draft = predictionDraft;
   const user = getCurrentUser();
-  if (!draft || !user) return;
+  if (!user) return;
+  // Each person's prediction locks the moment they save it — refuse a
+  // second save outright rather than silently overwriting an earlier pick,
+  // even if this got triggered some way other than the normal form (the
+  // form itself is hidden once a saved prediction exists, but this guard
+  // keeps the rule true regardless of how the function gets called).
+  if (myPrediction(cur.id)) { alert("توقعك محفوظ ومقفول من قبل — ما يتغيّر."); render(); return; }
+  const draft = predictionDraft;
+  if (!draft) return;
 
   if (cur.groupMode === "two") {
     if (draft.groupA.length !== 2 || draft.groupB.length !== 2) {
@@ -1200,9 +1207,8 @@ window.submitPrediction = async function() {
   if (draft.finalists.length !== 2) { alert("لازم تختار لاعبين بالضبط لطرفي النهائي."); return; }
   if (!draft.champion) { alert("لازم تختار توقع البطل."); return; }
 
-  const existing = myPrediction(cur.id);
   const record = {
-    id: existing ? existing.id : uid(),
+    id: uid(),
     tournament_id: cur.id,
     member_id: user.id,
     member_name: user.name,
@@ -1213,15 +1219,20 @@ window.submitPrediction = async function() {
     predicted_champion: draft.champion,
   };
 
-  const idx = predictions.findIndex(p => p.tournament_id === cur.id && p.member_id === user.id);
-  if (idx >= 0) predictions[idx] = record; else predictions.push(record);
+  predictions.push(record);
   render();
   try {
     await upsertPrediction(record);
     syncBadge.textContent = "تم حفظ توقعك ✓";
   } catch (e) {
     console.error(e);
+    // Roll back the optimistic local add — otherwise a failed save would
+    // leave the person permanently locked out (myPrediction() would find
+    // this local-only record and refuse every retry) without their
+    // prediction actually existing in the database.
+    predictions = predictions.filter(p => p.id !== record.id);
     syncBadge.textContent = "تعذر حفظ التوقع، حاول مرة ثانية";
+    render();
   }
 };
 
@@ -2404,7 +2415,7 @@ function predictionFormHtml(cur, draft) {
         ${championOptions}
       </select>
     </div>
-    <button class="cta-btn" onclick="submitPrediction()">${myPrediction(cur.id) ? "تحديث توقعي" : "حفظ توقعي"}</button>
+    <button class="cta-btn" onclick="submitPrediction()">🔒 حفظ توقعي نهائياً</button>
   `;
 }
 
@@ -2426,6 +2437,22 @@ function predictionsListHtml(tournamentPreds) {
   }).join("") + `</div>`;
 }
 
+function myPredictionLockedHtml(myPred) {
+  const parts = [];
+  if (myPred.predicted_group_a) parts.push(`مجموعة 1: ${myPred.predicted_group_a.map(n => coloredNameHtml(n)).join("، ")}`);
+  if (myPred.predicted_group_b) parts.push(`مجموعة 2: ${myPred.predicted_group_b.map(n => coloredNameHtml(n)).join("، ")}`);
+  if (myPred.predicted_top4) parts.push(`الصاعدون: ${myPred.predicted_top4.map(n => coloredNameHtml(n)).join("، ")}`);
+  if (myPred.predicted_finalists) parts.push(`النهائي: ${myPred.predicted_finalists.map(n => coloredNameHtml(n)).join("، ")}`);
+  if (myPred.predicted_champion) parts.push(`البطل: ${coloredNameHtml(myPred.predicted_champion)}`);
+  return `
+    <div class="prediction-row" style="border-right-color:#E4C06E;">
+      <div class="prediction-row-name">🔒 توقعك محفوظ ومقفول</div>
+      <div class="prediction-row-picks">${parts.join(" · ")}</div>
+    </div>
+    <p class="hint" style="margin-top:8px;">ما تقدر تعدّله بعد الحفظ — عشان يبقى توقع حقيقي بدون تغيير الرأي لاحقاً.</p>
+  `;
+}
+
 function predictionsSectionHtml(cur) {
   if (!predictionsSupported(cur)) return "";
   if (cur.stage === "wheel") return "";
@@ -2441,8 +2468,17 @@ function predictionsSectionHtml(cur) {
     if (!user) {
       bodyHtml = `<p class="hint">سجّل دخولك عشان تسجل توقعك لهذي البطولة.</p><button class="cta-btn" onclick="openLogin()">تسجيل الدخول</button>`;
     } else {
-      const draft = ensurePredictionDraft(cur);
-      bodyHtml = predictionFormHtml(cur, draft) + `<div class="archive-divider"></div>` + predictionsListHtml(tournamentPreds);
+      // Each person's prediction locks the instant THEY save it (not just
+      // when the tournament-wide lock kicks in) — once saved, show their
+      // own picks read-only instead of the editable form, so nobody can
+      // quietly second-guess and swap picks after committing.
+      const myPred = myPrediction(cur.id);
+      if (myPred) {
+        bodyHtml = myPredictionLockedHtml(myPred) + `<div class="archive-divider"></div>` + predictionsListHtml(tournamentPreds);
+      } else {
+        const draft = ensurePredictionDraft(cur);
+        bodyHtml = predictionFormHtml(cur, draft) + `<div class="archive-divider"></div>` + predictionsListHtml(tournamentPreds);
+      }
     }
   }
 

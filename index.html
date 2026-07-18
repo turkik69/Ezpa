@@ -362,12 +362,14 @@
 
   .vs { font-weight:800; color: rgba(242,238,227,0.4); font-size:12px; }
 
-  table.score-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+  table.score-table { width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed; }
   table.score-table th {
-    padding:7px 3px; color: rgba(242,238,227,0.45); font-weight:800; font-size:10.5px;
-    text-transform:uppercase; letter-spacing:0.3px; border-bottom:1px solid rgba(242,238,227,0.12);
+    padding:7px 2px; color: rgba(242,238,227,0.45); font-weight:800; font-size:10px;
+    text-transform:uppercase; letter-spacing:0.2px; border-bottom:1px solid rgba(242,238,227,0.12);
   }
-  table.score-table td { padding:7px 3px; text-align:center; border-bottom:1px solid rgba(242,238,227,0.06); }
+  table.score-table td { padding:7px 2px; text-align:center; border-bottom:1px solid rgba(242,238,227,0.06); }
+  table.score-table th:nth-child(2), table.score-table td:nth-child(2) { width:26%; }
+  table.score-table td:nth-child(2) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .qualify-row { background: rgba(201,162,75,0.08); border-right:2px solid #C9A24B; }
 
   .final-box {
@@ -519,9 +521,10 @@
       background-position: left 2px center; background-size:8px 5px;
     }
     .vs { font-size:10px; }
-    table.score-table { font-size:9px; }
+    table.score-table { font-size:8.5px; }
     table.score-table th, table.score-table td { padding:5px 1px; }
-    table.score-table th { font-size:8.5px; }
+    table.score-table th { font-size:7.5px; letter-spacing:0; }
+    table.score-table th:nth-child(2), table.score-table td:nth-child(2) { width:24%; }
     .bye-note { font-size:10px; }
   }
 </style>
@@ -2237,11 +2240,13 @@ function scoreTableHtml(table) {
       <td>${t.w}</td>
       <td>${t.d}</td>
       <td>${t.l}</td>
+      <td>${t.gf}</td>
+      <td>${t.ga}</td>
       <td>${t.gd>0?'+'+t.gd:t.gd}</td>
       <td style="font-weight:700">${t.pts}</td>
     </tr>`).join("");
   return `<table class="score-table">
-    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>ت</th><th>خ</th><th>فأ</th><th>نقاط</th></tr></thead>
+    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>ت</th><th>خ</th><th>له</th><th>عليه</th><th>فأ</th><th>نقاط</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }

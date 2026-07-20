@@ -1210,11 +1210,13 @@ window.logout = function() {
 window.openProfile = function() {
   if (!requirePermission("member")) return;
   profileModal = { pin1: "", pin2: "", error: "", success: "", color: null, nickname: null, customizationSuccess: "" };
+  view = "profile";
   render();
 };
 
 window.closeProfile = function() {
   profileModal = false;
+  view = HOME_VIEW;
   render();
 };
 
@@ -2863,7 +2865,7 @@ function loginModalHtml() {
   </div>`;
 }
 
-function profileModalHtml() {
+function profilePageHtml() {
   if (!profileModal) return "";
   const user = getCurrentUser();
   if (!user) return "";
@@ -2885,42 +2887,45 @@ function profileModalHtml() {
   const swatchesHtml = PLAYER_COLOR_PALETTE.map(c => `
     <div class="color-swatch ${c === currentColor ? 'selected' : ''}" style="background:${c}" onclick="updateProfileField('color', '${c}')"></div>
   `).join("");
-  return `
-  <div class="modal-overlay" onclick="if(event.target===this) closeProfile()">
-    <div class="modal-box">
-      <div class="section-icon-title"><span class="icon">👤</span>${coloredNameHtml(user.name)}</div>
-      <p class="hint">${roleLabel}</p>
-      <div class="archive-divider"></div>
-      <div class="add-member-label">التخصيص الشخصي</div>
-      <p class="hint">اختر لونك المميز ولقبك — يظهرون جنب اسمك بكل مكان بالتطبيق.</p>
-      <div class="color-swatch-row">${swatchesHtml}</div>
-      <div class="input-row" style="margin-top:10px;">
-        <input class="text-input" placeholder="لقبك (اختياري، مثلاً: الثعلب)" maxlength="20" value="${escapeHtml(profileModal.nickname != null ? profileModal.nickname : (user.nickname || ''))}" oninput="updateProfileField('nickname', this.value)">
-      </div>
-      <button class="cta-btn" style="margin-top:10px;" onclick="submitCustomization()">حفظ التخصيص</button>
-      ${profileModal.customizationSuccess ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
-      <div class="archive-divider"></div>
-      <div class="add-member-label">الإشعارات</div>
-      <p class="hint">فعّل الإشعارات عشان توصلك تنبيهات (تأكيد حضور، بداية بطولة، نتائج نهائي) حتى لو التطبيق مقفول. التفعيل خاص بهذا الجهاز فقط.</p>
-      ${notifSectionHtml}
-      ${isTurki() ? `
-      <div class="archive-divider"></div>
-      <div class="add-member-label">📢 إرسال إشعار لكل الأعضاء</div>
-      <p class="hint">هذي الميزة خاصة فيك بس — اكتب رسالة وتوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات.</p>
-      <button class="cta-btn" onclick="openMessageModal()">📢 كتابة إشعار جديد</button>
-      ` : ""}
-      <div class="archive-divider"></div>
-      <div class="add-member-label">تغيير رمز الدخول</div>
-      <div class="input-row" style="flex-direction:column;">
-        <input class="text-input" type="password" placeholder="رمز جديد" value="${escapeHtml(profileModal.pin1)}" oninput="updateProfileField('pin1', this.value)">
-        <input class="text-input" type="password" placeholder="أعد كتابة الرمز الجديد" value="${escapeHtml(profileModal.pin2)}" oninput="updateProfileField('pin2', this.value)">
-      </div>
-      ${profileModal.error ? `<div class="warn-note">${escapeHtml(profileModal.error)}</div>` : ""}
-      ${profileModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.success)}</div>` : ""}
-      <button class="cta-btn" onclick="submitPinChange()">حفظ الرمز الجديد</button>
-      <button class="cta-btn danger" style="margin-top:8px;" onclick="logout()">تسجيل الخروج</button>
-      <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeProfile()">إغلاق</button>
+  return `<div class="card theme-members">
+    <div class="section-icon-title"><span class="icon">👤</span>${coloredNameHtml(user.name)}</div>
+    <p class="hint">${roleLabel}</p>
+
+    ${isTurki() ? `
+    <div class="archive-divider"></div>
+    <div class="section-icon-title"><span class="icon">🛠️</span>لوحة المشرف</div>
+    <div class="add-member-label">📢 إرسال إشعار لكل الأعضاء</div>
+    <p class="hint">هذي الميزة خاصة فيك بس — اكتب رسالة وتوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات.</p>
+    <button class="cta-btn" onclick="openMessageModal()">📢 كتابة إشعار جديد</button>
+    ` : ""}
+
+    <div class="archive-divider"></div>
+    <div class="add-member-label">التخصيص الشخصي</div>
+    <p class="hint">اختر لونك المميز ولقبك — يظهرون جنب اسمك بكل مكان بالتطبيق.</p>
+    <div class="color-swatch-row">${swatchesHtml}</div>
+    <div class="input-row" style="margin-top:10px;">
+      <input class="text-input" placeholder="لقبك (اختياري، مثلاً: الثعلب)" maxlength="20" value="${escapeHtml(profileModal.nickname != null ? profileModal.nickname : (user.nickname || ''))}" oninput="updateProfileField('nickname', this.value)">
     </div>
+    <button class="cta-btn" style="margin-top:10px;" onclick="submitCustomization()">حفظ التخصيص</button>
+    ${profileModal.customizationSuccess ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
+
+    <div class="archive-divider"></div>
+    <div class="add-member-label">الإشعارات</div>
+    <p class="hint">فعّل الإشعارات عشان توصلك تنبيهات (تأكيد حضور، بداية بطولة، نتائج نهائي) حتى لو التطبيق مقفول. التفعيل خاص بهذا الجهاز فقط.</p>
+    ${notifSectionHtml}
+
+    <div class="archive-divider"></div>
+    <div class="add-member-label">تغيير رمز الدخول</div>
+    <div class="input-row" style="flex-direction:column;">
+      <input class="text-input" type="password" placeholder="رمز جديد" value="${escapeHtml(profileModal.pin1)}" oninput="updateProfileField('pin1', this.value)">
+      <input class="text-input" type="password" placeholder="أعد كتابة الرمز الجديد" value="${escapeHtml(profileModal.pin2)}" oninput="updateProfileField('pin2', this.value)">
+    </div>
+    ${profileModal.error ? `<div class="warn-note">${escapeHtml(profileModal.error)}</div>` : ""}
+    ${profileModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.success)}</div>` : ""}
+    <button class="cta-btn" onclick="submitPinChange()">حفظ الرمز الجديد</button>
+
+    <div class="archive-divider"></div>
+    <button class="cta-btn danger" onclick="logout()">تسجيل الخروج</button>
   </div>`;
 }
 
@@ -3125,11 +3130,11 @@ function render() {
         ${view === "members" ? membersStageHtml() : ""}
         ${view === "tournament" ? tournamentFlowHtml() : ""}
         ${view === "stats" ? statsPanelHtml(appState.archive, false) : ""}
+        ${view === "profile" ? profilePageHtml() : ""}
       </main>
       ${view === "tournament" ? `<aside class="sidebar">${statsPanelHtml(appState.archive, true)}</aside>` : ""}
     </div>
     ${loginModalHtml()}
-    ${profileModalHtml()}
     ${messageModalHtml()}
     ${celebrationHtml()}
   `;

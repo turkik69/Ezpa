@@ -10,6 +10,7 @@
 <title>دوري أبطال العزبة</title>
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -714,13 +715,30 @@ async function subscribeCurrentUserToPush() {
     return { ok: false, reason: "denied" };
   }
 
-  const reg = await navigator.serviceWorker.ready;
-  let subscription = await reg.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
+  // Everything below can genuinely throw on some Android/Chrome devices —
+  // most commonly "AbortError: Registration failed - push service error",
+  // which happens when the device's Google Play Services / FCM registration
+  // isn't working (missing Google account, degoogled ROM, connectivity to
+  // Google blocked, etc). Apple's push service has no equivalent failure
+  // mode, which is exactly why this could work on iPhones and silently do
+  // nothing on some Android phones if left uncaught — so every step here is
+  // wrapped so the caller always gets a clear reason instead of an unhandled
+  // rejection that produces no visible feedback at all.
+  let reg, subscription;
+  try {
+    reg = await navigator.serviceWorker.ready;
+    subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+  } catch (e) {
+    console.error("push subscribe failed", e);
+    const msg = String(e && e.message || e);
+    const isAbort = e && (e.name === "AbortError" || msg.includes("push service"));
+    return { ok: false, reason: isAbort ? "push-service-unavailable" : "subscribe-failed", detail: msg };
   }
 
   const subJson = subscription.toJSON();
@@ -733,18 +751,23 @@ async function subscribeCurrentUserToPush() {
   };
 
   // upsert by endpoint (a device re-subscribing gets the same endpoint)
-  const res = await fetch(PUSH_SUB_URL, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
-    },
-    body: JSON.stringify(record),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    console.error("failed to save push subscription", t);
-    return { ok: false, reason: "save-failed" };
+  try {
+    const res = await fetch(PUSH_SUB_URL, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(record),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.error("failed to save push subscription", t);
+      return { ok: false, reason: "save-failed", detail: t };
+    }
+  } catch (e) {
+    console.error("failed to save push subscription", e);
+    return { ok: false, reason: "save-failed", detail: String(e) };
   }
   return { ok: true };
 }
@@ -1367,7 +1390,17 @@ window.submitPrediction = async function() {
 
 
 window.enablePushForThisDevice = async function() {
-  const result = await subscribeCurrentUserToPush();
+  let result;
+  try {
+    result = await subscribeCurrentUserToPush();
+  } catch (e) {
+    // Defense in depth: subscribeCurrentUserToPush() itself shouldn't throw
+    // anymore (every risky step inside it is now caught), but this outer
+    // guard makes sure that even an unforeseen error still shows something
+    // to the person instead of the button silently doing nothing.
+    console.error("enablePushForThisDevice unexpected error", e);
+    result = { ok: false, reason: "unknown", detail: String(e) };
+  }
   if (result.ok) {
     if (profileModal) { profileModal.success = "تم تفعيل الإشعارات على هذا الجهاز ✓"; profileModal.error = ""; }
   } else {
@@ -1375,9 +1408,15 @@ window.enablePushForThisDevice = async function() {
       "denied": "تم رفض إذن الإشعارات. لازم تسمح للموقع بالإشعارات من إعدادات المتصفح.",
       "unsupported": "الإشعارات ما مدعومة بهذا المتصفح أو الجهاز.",
       "not-logged-in": "لازم تسجل دخول أول.",
-      "save-failed": "تعذر حفظ الاشتراك، حاول مرة ثانية.",
+      "save-failed": "تعذر حفظ الاشتراك، تأكد من الاتصال بالإنترنت وحاول مرة ثانية.",
+      "push-service-unavailable": "تعذر تفعيل الإشعارات — الغالب إن خدمات Google Play مو شغالة صح على الجهاز (يحتاج حساب Google مسجّل دخول وخدمات Google Play محدّثة). جرب تتأكد إن حساب Google شغال بالجهاز، أو جرب من متصفح Chrome محدّث.",
+      "subscribe-failed": "تعذر تفعيل الإشعارات على هذا المتصفح/الجهاز.",
+      "unknown": "صار خطأ غير متوقع أثناء التفعيل.",
     };
-    if (profileModal) { profileModal.error = messages[result.reason] || "تعذر تفعيل الإشعارات"; profileModal.success = ""; }
+    if (profileModal) {
+      profileModal.error = messages[result.reason] || "تعذر تفعيل الإشعارات";
+      profileModal.success = "";
+    }
   }
   render();
 };

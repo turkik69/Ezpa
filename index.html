@@ -1641,7 +1641,15 @@ function startNewTournament() {
   };
   wheelUi = { rotation: 0, spinning: false, lastWinner: null };
   persist({ ...appState, current: base });
-  sendPushNotification(`بدأت ${name} 🏆`, `${confirmedMembers.length} مشاركين — القرعة جاهزة، ادخل التطبيق!`);
+  // Single-group mode has no wheel step — the player list (and therefore the
+  // group/top-4 prediction pool) is final the instant the tournament starts,
+  // so the "predictions are open" hint belongs in this same notification
+  // rather than a separate one moments later. Two-group mode gets its own
+  // "predictions open" ping once the wheel finishes in proceedToGroups().
+  const predictionsHint = (groupMode === "one" && allPlayers.length >= 4)
+    ? " — التوقعات مفتوحة الحين، سجلوا قبل ما تبدأ النتائج 🔮"
+    : "";
+  sendPushNotification(`بدأت ${name} 🏆`, `${confirmedMembers.length} مشاركين — القرعة جاهزة، ادخل التطبيق!${predictionsHint}`);
 }
 
 function updateCurrent(patch) {
@@ -1650,6 +1658,11 @@ function updateCurrent(patch) {
 
 async function finishTournament(champion, runnerUp, semifinalistsOut, finalStandingsAll) {
   const cur = appState.current;
+  // Checked against the archive as it stands right NOW, before this
+  // tournament's own entry gets appended below — otherwise the just-added
+  // entry would always satisfy the check and "first title" could never be
+  // detected correctly.
+  const isFirstTitle = !!champion && !appState.archive.some(t => t.champion === champion.name);
   const archiveEntry = {
     // Reuse the live tournament's own id (instead of generating a new one)
     // so predictions saved against this tournament while it was live —
@@ -1678,7 +1691,8 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
   });
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
   if (champion) {
-    sendPushNotification(`👑 بطل ${cur.name}`, `${champion.name} توّج بطلاً! ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
+    const firstTitleHint = isFirstTitle ? " 🎉 (أول لقب له!)" : "";
+    sendPushNotification(`👑 بطل ${cur.name}`, `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
     celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
     render();
     playChampionFanfare();
@@ -1695,6 +1709,7 @@ async function doEndPlayDay() {
     await unconfirmAllMembers();
     await deleteConfirmedGuests();
     syncBadge.textContent = "تم إنهاء يوم اللعب وتصفير كل التأكيدات ✓";
+    sendPushNotification("📋 انتهى يوم اللعب", "شكراً للجميع على المشاركة، نشوفكم يوم اللعب الجاي!");
   } catch (e) {
     console.error(e);
     syncBadge.textContent = "تعذر تصفير كل التأكيدات، حاول مرة ثانية";
@@ -1987,6 +2002,7 @@ function proceedToGroups() {
     groupATotalRounds: buildA.totalRounds,
     groupBTotalRounds: buildB.totalRounds,
   });
+  sendPushNotification("🔮 التوقعات مفتوحة!", "اكتملت المجموعات — سجل توقعك للصاعدين والبطل قبل ما تبدأ النتائج");
 }
 
 function doUpdateMatchField(which, matchId, field, value) {
@@ -1994,6 +2010,7 @@ function doUpdateMatchField(which, matchId, field, value) {
   const key = which === "A" ? "matchesA" : which === "B" ? "matchesB" : "singleMatches";
   const list = cur[key];
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  notifyIfFreshHatTrick(list.find(m => m.id === matchId), field, parsed);
   const updated = list.map(m => m.id === matchId ? { ...m, [field]: parsed } : m);
   updateCurrent({ [key]: updated });
 }
@@ -2021,6 +2038,7 @@ function doGoToKnockout() {
     promotedGroupA: [a1?.name, a2?.name].filter(Boolean),
     promotedGroupB: [b1?.name, b2?.name].filter(Boolean),
   });
+  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `${a1?.name} ضد ${b2?.name} | ${b1?.name} ضد ${a2?.name}`);
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2043,12 +2061,31 @@ function doGoToKnockoutFromSingle() {
     promotedNames,
     promotedTop4: promotedNames.slice(),
   });
+  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `${p1?.name} ضد ${p4?.name} | ${p2?.name} ضد ${p3?.name}`);
+}
+
+// Shared by all three match-score update paths (group stage, semis, final).
+// Fires a hat-trick notification only the instant a score first crosses
+// into 3+ goals (comparing against the OLD value) — never re-fires if an
+// admin nudges an already-3+ score while double-checking a result.
+function notifyIfFreshHatTrick(match, field, newValue) {
+  if (!match) return;
+  const oldValue = match[field];
+  const wasHatTrick = oldValue != null && oldValue >= 3;
+  const isHatTrick = newValue != null && newValue >= 3;
+  if (isHatTrick && !wasHatTrick) {
+    const scorer = field === "scoreA" ? match.a : match.b;
+    if (scorer) {
+      sendPushNotification("🔥 هاتريك!", `${scorer.name} سجّل ${newValue} أهداف بمباراة وحدة!`);
+    }
+  }
 }
 
 function doUpdateSemiField(key, field, value) {
   const cur = appState.current;
   const semis = cur.semis;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  notifyIfFreshHatTrick(semis[key], field, parsed);
   const updated = { ...semis, [key]: { ...semis[key], [field]: parsed } };
   updateCurrent({ semis: updated });
 }
@@ -2059,11 +2096,13 @@ function doGoToFinal() {
   const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
   if (!w1 || !w2) return;
   updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
+  sendPushNotification("🏆 النهائي!", `${w1.name} ضد ${w2.name} — من يتوّج بطلاً؟`);
 }
 
 function doUpdateFinalField(field, value) {
   const cur = appState.current;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
+  notifyIfFreshHatTrick(cur.final, field, parsed);
   updateCurrent({ final: { ...cur.final, [field]: parsed } });
 }
 

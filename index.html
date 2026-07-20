@@ -443,6 +443,10 @@
   }
   .prediction-row-name { font-weight:800; font-size:13.5px; margin-bottom:4px; }
   .prediction-row-picks { font-size:11.5px; color: rgba(242,238,227,0.6); line-height:1.6; }
+  .message-image-preview {
+    width:100%; max-height:180px; object-fit:cover; border-radius:10px;
+    margin-top:10px; border:1px solid rgba(242,238,227,0.15);
+  }
   .club-logo { width:18px; height:18px; object-fit:contain; flex-shrink:0; }
   .club-logo.club-logo-sm { width:14px; height:14px; }
   .club-logo.club-logo-lg { width:24px; height:24px; }
@@ -677,6 +681,32 @@ async function upsertPrediction(pred) {
 const VAPID_PUBLIC_KEY = "BGwenFaeeD9ioqvnqj9fSsK-Ckg8So241HX0Eu8DzmImxbI6_RiqFtfo7rbAaY9K8KOan6ZSpSGOIx8hqcMUQFw";
 const PUSH_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-push";
 const PUSH_SUB_URL = SUPABASE_URL + "/rest/v1/ezba_push_subscriptions";
+const STORAGE_UPLOAD_URL = SUPABASE_URL + "/storage/v1/object/ezba-message-images/";
+const STORAGE_PUBLIC_URL = SUPABASE_URL + "/storage/v1/object/public/ezba-message-images/";
+
+// Uploads an image file selected on the device directly to Supabase Storage
+// and returns its public URL — this is what lets Turki attach a photo he
+// just took or screenshotted, not just a link to something already online.
+async function uploadMessageImage(file) {
+  const rawExt = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ext = rawExt || "jpg";
+  const filename = uid() + "." + ext;
+  const res = await fetch(STORAGE_UPLOAD_URL + filename, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": file.type || "image/jpeg",
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error("image upload failed: " + t);
+  }
+  return STORAGE_PUBLIC_URL + filename;
+}
+
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -813,14 +843,14 @@ async function sendPushNotification(title, body, memberIds) {
 // throws on failure — used only for the manual broadcast-message feature,
 // where sending IS the entire point of the action, so the sender needs
 // honest success/failure feedback rather than an always-green checkmark.
-async function sendPushNotificationOrThrow(title, body, memberIds) {
+async function sendPushNotificationOrThrow(title, body, memberIds, imageUrl) {
   const res = await fetch(PUSH_FUNCTION_URL, {
     method: "POST",
     headers: {
       apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "/" }),
+    body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "/", image: imageUrl || null }),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -1190,7 +1220,7 @@ window.closeProfile = function() {
 
 window.openMessageModal = function() {
   if (!requirePermission("turki")) return;
-  messageModal = { title: "", body: "", sending: false, success: "", error: "" };
+  messageModal = { title: "", body: "", imageUrl: "", uploading: false, sending: false, success: "", error: "" };
   render();
 };
 
@@ -1204,11 +1234,42 @@ window.updateMessageField = function(field, value) {
   messageModal[field] = value;
 };
 
+window.handleMessageImageFile = async function(fileInput) {
+  if (!messageModal) return;
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    messageModal.error = "لازم تختار ملف صورة (jpg, png..)";
+    render();
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    messageModal.error = "حجم الصورة كبير — الحد الأقصى 5 ميجابايت";
+    render();
+    return;
+  }
+  messageModal.uploading = true;
+  messageModal.error = "";
+  render();
+  try {
+    const url = await uploadMessageImage(file);
+    messageModal.imageUrl = url;
+    messageModal.uploading = false;
+    render();
+  } catch (e) {
+    console.error(e);
+    messageModal.uploading = false;
+    messageModal.error = "تعذر رفع الصورة، حاول مرة ثانية";
+    render();
+  }
+};
+
 window.sendCustomMessage = async function() {
   if (!requirePermission("turki")) return;
   if (!messageModal) return;
   const title = (messageModal.title || "").trim();
   const body = (messageModal.body || "").trim();
+  const imageUrl = (messageModal.imageUrl || "").trim();
   if (!body) {
     messageModal.error = "لازم تكتب نص الرسالة أول.";
     messageModal.success = "";
@@ -1220,7 +1281,7 @@ window.sendCustomMessage = async function() {
   messageModal.success = "";
   render();
   try {
-    const result = await sendPushNotificationOrThrow(title || "📢 رسالة من تركي", body);
+    const result = await sendPushNotificationOrThrow(title || "📢 رسالة من تركي", body, null, imageUrl);
     messageModal.sending = false;
     if (result && typeof result.sent === "number") {
       if (result.total === 0) {
@@ -1233,11 +1294,13 @@ window.sendCustomMessage = async function() {
         messageModal.success = `تم الإرسال ✓ وصلت لـ ${result.sent} من ${result.total} جهاز مفعّل`;
         messageModal.title = "";
         messageModal.body = "";
+        messageModal.imageUrl = "";
       }
     } else {
       messageModal.success = "تم الإرسال ✓";
       messageModal.title = "";
       messageModal.body = "";
+      messageModal.imageUrl = "";
     }
     render();
   } catch (e) {
@@ -2863,6 +2926,11 @@ function profileModalHtml() {
 
 function messageModalHtml() {
   if (!messageModal) return "";
+  const imageUrl = (messageModal.imageUrl || "").trim();
+  const previewHtml = imageUrl
+    ? `<img src="${escapeHtml(imageUrl)}" alt="" class="message-image-preview" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+       <div class="warn-note" style="display:none;">تعذر تحميل الصورة من هذا الرابط — تأكد إنه رابط صورة مباشر (ينتهي بـ jpg أو png مثلاً)</div>`
+    : "";
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeMessageModal()">
     <div class="modal-box">
@@ -2872,9 +2940,19 @@ function messageModalHtml() {
         <input class="text-input" placeholder="عنوان الإشعار (مثلاً: تجمعوا الساعة 5)" maxlength="60" value="${escapeHtml(messageModal.title)}" oninput="updateMessageField('title', this.value)">
         <textarea class="text-input" rows="3" placeholder="نص الرسالة..." maxlength="180" oninput="updateMessageField('body', this.value)">${escapeHtml(messageModal.body)}</textarea>
       </div>
+      <div class="add-member-label" style="margin-top:14px;">صورة (اختياري)</div>
+      <label class="cta-btn" style="display:block; text-align:center; cursor:pointer; ${messageModal.uploading ? 'opacity:0.6; pointer-events:none;' : ''}">
+        ${messageModal.uploading ? "⏳ جارِ الرفع..." : "📁 ارفع صورة من الجهاز"}
+        <input type="file" accept="image/*" style="display:none;" onchange="handleMessageImageFile(this)" ${messageModal.uploading ? "disabled" : ""}>
+      </label>
+      <div class="input-row" style="margin-top:8px;">
+        <input class="text-input" placeholder="أو الصق رابط صورة مباشر" value="${escapeHtml(messageModal.imageUrl || "")}" oninput="updateMessageField('imageUrl', this.value)">
+      </div>
+      ${previewHtml}
+      <p class="hint" style="margin-top:6px;">💡 الصورة تظهر بشكل موثوق على أندرويد. على آيفون، بعض الأجهزة تعرض النص بس بدون الصورة — هذا قيد من نظام آبل نفسه.</p>
       ${messageModal.error ? `<div class="warn-note">${escapeHtml(messageModal.error)}</div>` : ""}
       ${messageModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(messageModal.success)}</div>` : ""}
-      <button class="cta-btn" ${messageModal.sending ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : "📢 إرسال الآن"}</button>
+      <button class="cta-btn" ${(messageModal.sending || messageModal.uploading) ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : "📢 إرسال الآن"}</button>
       <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeMessageModal()">إلغاء</button>
     </div>
   </div>`;

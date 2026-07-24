@@ -1714,7 +1714,12 @@ function startNewTournament() {
   const predictionsHint = (groupMode === "one" && allPlayers.length >= 4)
     ? " — التوقعات مفتوحة الحين، سجلوا قبل ما تبدأ النتائج 🔮"
     : "";
-  sendPushNotification(`بدأت ${name} 🏆`, `${confirmedMembers.length} مشاركين — القرعة جاهزة، ادخل التطبيق!${predictionsHint}`);
+  // Two groups drawing in parallel get the "two channels" broadcast flavor;
+  // a single round-robin group is one unified pool, so it gets one channel.
+  const channelLine = groupMode === "two"
+    ? "📺 شاهدوا القرعة حصرياً على قنوات العزبة MAX 1 وMAX 2!"
+    : "📺 شاهدوا حصرياً على قناة العزبة MAX!";
+  sendPushNotification(`بدأت ${name} 🏆`, `${channelLine}${predictionsHint}`);
 }
 
 function updateCurrent(patch) {
@@ -2103,7 +2108,7 @@ function doGoToKnockout() {
     promotedGroupA: [a1?.name, a2?.name].filter(Boolean),
     promotedGroupB: [b1?.name, b2?.name].filter(Boolean),
   });
-  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `${a1?.name} ضد ${b2?.name} | ${b1?.name} ضد ${a2?.name}`);
+  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `📺 MAX 1: ${a1?.name} ضد ${b2?.name}\n📺 MAX 2: ${b1?.name} ضد ${a2?.name}`);
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2126,7 +2131,7 @@ function doGoToKnockoutFromSingle() {
     promotedNames,
     promotedTop4: promotedNames.slice(),
   });
-  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `${p1?.name} ضد ${p4?.name} | ${p2?.name} ضد ${p3?.name}`);
+  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
 }
 
 // Shared by all three match-score update paths (group stage, semis, final).
@@ -2161,7 +2166,7 @@ function doGoToFinal() {
   const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
   if (!w1 || !w2) return;
   updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
-  sendPushNotification("🏆 النهائي!", `${w1.name} ضد ${w2.name} — من يتوّج بطلاً؟`);
+  sendPushNotification("🏆 النهائي!", `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
 }
 
 function doUpdateFinalField(field, value) {

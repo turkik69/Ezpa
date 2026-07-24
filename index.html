@@ -2080,7 +2080,7 @@ function doUpdateMatchField(which, matchId, field, value) {
   const key = which === "A" ? "matchesA" : which === "B" ? "matchesB" : "singleMatches";
   const list = cur[key];
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
-  notifyIfFreshHatTrick(list.find(m => m.id === matchId), field, parsed);
+  notifyIfFreshDemolition(list.find(m => m.id === matchId), field, parsed);
   const updated = list.map(m => m.id === matchId ? { ...m, [field]: parsed } : m);
   updateCurrent({ [key]: updated });
 }
@@ -2134,28 +2134,47 @@ function doGoToKnockoutFromSingle() {
   sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
 }
 
-// Shared by all three match-score update paths (group stage, semis, final).
-// Fires a hat-trick notification only the instant a score first crosses
-// into 3+ goals (comparing against the OLD value) — never re-fires if an
-// admin nudges an already-3+ score while double-checking a result.
-function notifyIfFreshHatTrick(match, field, newValue) {
+// Fun, varied "demolition" notifications — fires only when a match's FINAL
+// score becomes exactly 3-0 (either direction), by comparing the
+// prospective combined score against the old combined score. That means it
+// only fires once, the instant the match crosses into a clean 3-0 sweep —
+// not for every 3+ scoreline (4-1, 3-2, etc.), and never re-fires if an
+// admin nudges an already-3-0 result while double-checking it. A random
+// phrase is picked each time so the same wording doesn't repeat match after
+// match.
+const DEMOLITION_PHRASES = [
+  (winner, loser) => `خلّصها ${winner} بالثلاثة! مباراة مجنونة، دمّر ${loser} تدمير 🔥`,
+  (winner, loser) => `3-0 نظيفة من ${winner}! ${loser} ما شاف الكرة اليوم 😂`,
+  (winner, loser) => `${winner} يسحق ${loser} بثلاثية كاملة! مباراة ما فيها كلام ⚡`,
+  (winner, loser) => `ثلاثة أهداف نظيفة لـ${winner}! ${loser} يحتاج مراجعة شاملة بعد اليوم 🥶`,
+  (winner, loser) => `هيمنة كاملة من ${winner}! 3-0 و${loser} ما قدر يرد 💀`,
+  (winner, loser) => `${winner} يفرض سيطرته: 3-0! ليلة سودا لـ${loser} 🌚`,
+];
+
+function notifyIfFreshDemolition(match, field, newValue) {
   if (!match) return;
-  const oldValue = match[field];
-  const wasHatTrick = oldValue != null && oldValue >= 3;
-  const isHatTrick = newValue != null && newValue >= 3;
-  if (isHatTrick && !wasHatTrick) {
-    const scorer = field === "scoreA" ? match.a : match.b;
-    if (scorer) {
-      sendPushNotification("🔥 هاتريك!", `${scorer.name} سجّل ${newValue} أهداف بمباراة وحدة!`);
-    }
-  }
+  const oldA = match.scoreA, oldB = match.scoreB;
+  const newA = field === "scoreA" ? newValue : oldA;
+  const newB = field === "scoreB" ? newValue : oldB;
+
+  const wasDemolition = (oldA === 3 && oldB === 0) || (oldA === 0 && oldB === 3);
+  const isDemolition = (newA === 3 && newB === 0) || (newA === 0 && newB === 3);
+  if (!isDemolition || wasDemolition) return;
+
+  const winnerIsA = newA === 3;
+  const winner = winnerIsA ? match.a : match.b;
+  const loser = winnerIsA ? match.b : match.a;
+  if (!winner || !loser) return;
+
+  const phrase = DEMOLITION_PHRASES[Math.floor(Math.random() * DEMOLITION_PHRASES.length)];
+  sendPushNotification("🔥 تدمير!", phrase(winner.name, loser.name));
 }
 
 function doUpdateSemiField(key, field, value) {
   const cur = appState.current;
   const semis = cur.semis;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
-  notifyIfFreshHatTrick(semis[key], field, parsed);
+  notifyIfFreshDemolition(semis[key], field, parsed);
   const updated = { ...semis, [key]: { ...semis[key], [field]: parsed } };
   updateCurrent({ semis: updated });
 }
@@ -2172,7 +2191,7 @@ function doGoToFinal() {
 function doUpdateFinalField(field, value) {
   const cur = appState.current;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
-  notifyIfFreshHatTrick(cur.final, field, parsed);
+  notifyIfFreshDemolition(cur.final, field, parsed);
   updateCurrent({ final: { ...cur.final, [field]: parsed } });
 }
 

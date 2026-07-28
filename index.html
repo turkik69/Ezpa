@@ -178,10 +178,10 @@
     padding:11px 16px; border:none; border-bottom:2px solid transparent;
     background: transparent; color: rgba(242,238,227,0.5);
     font-weight:800; font-size:13.5px; cursor:pointer; transition: color 0.15s ease, border-color 0.15s ease;
-    white-space:nowrap; flex:1 1 auto; min-width:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; min-width:0;
   }
   @media (max-width: 480px) {
-    .tab-btn { padding:10px 6px; font-size:11.5px; }
+    .tab-btn { padding:9px 4px; font-size:10.5px; }
   }
   .tab-btn.active { color:#E4C06E; border-bottom-color:#C9A24B; }
   .tab-btn:hover:not(.active) { color: rgba(242,238,227,0.8); }
@@ -202,6 +202,7 @@
   .card.theme-groups    { border-color: rgba(90,190,140,0.5);   box-shadow: 0 0 0 1px rgba(90,190,140,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(90,190,140,0.1); }
   .card.theme-knockout  { border-color: rgba(90,150,230,0.5);   box-shadow: 0 0 0 1px rgba(90,150,230,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(90,150,230,0.1); }
   .card.theme-stats     { border-color: rgba(200,200,210,0.4);  box-shadow: 0 0 0 1px rgba(200,200,210,0.12) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(200,200,210,0.08); }
+  .card.theme-friendly  { border-color: rgba(240,168,104,0.5);  box-shadow: 0 0 0 1px rgba(240,168,104,0.14) inset, 0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(240,168,104,0.1); }
 
   .section-icon-title {
     display:flex; align-items:center; gap:10px; font-size:19px; font-weight:800;
@@ -1083,7 +1084,7 @@ function scoreSelectHtml(value, onchangeAttr) {
 }
 
 // ============ App State ============
-const emptyState = () => ({ tournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
+const emptyState = () => ({ tournamentIndex: 0, friendlyTournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
 let appState = emptyState();
 let members = []; // [{id, name, club, is_guest, confirmed, role, pin}]
 let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_group_a, predicted_group_b, predicted_top4, predicted_finalists, predicted_champion}]
@@ -1131,6 +1132,16 @@ function isTurki() {
 
 function isLoggedIn() {
   return !!getCurrentUser();
+}
+
+// The "official" league plays Thursday/Friday; any other day of the week
+// that someone happens to gather and confirm attendance is treated as an
+// unofficial "friendly" get-together — same full tournament mechanic (draw,
+// groups, knockout), just tracked in its own separate stats/archive so it
+// never mixes into the official league's historical rankings.
+function isOfficialPlayDay() {
+  const day = new Date().getDay(); // 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  return day === 4 || day === 5;
 }
 
 // Central permission check. `level` is "member" (any logged-in user) or
@@ -1609,7 +1620,11 @@ async function doToggleConfirm(id) {
   try {
     await updateMember(id, { confirmed: m.confirmed });
     if (m.confirmed) {
-      sendPushNotification("تأكيد حضور جديد ⚽", `${m.name} أكّد حضوره ليوم اللعب`);
+      if (isOfficialPlayDay()) {
+        sendPushNotification("تأكيد حضور جديد ⚽", `${m.name} أكّد حضوره ليوم اللعب`);
+      } else {
+        sendPushNotification("⚽ تجمّع ودي", `تم تأكيد ${m.name} للمشاركة في البطولة الودية`);
+      }
     }
   } catch (e) {
     console.error(e);
@@ -1654,7 +1669,15 @@ function startNewTournament() {
   const confirmedMembers = members.filter(m => m.confirmed);
   const allPlayers = confirmedMembers.map(m => ({ id: m.id, name: m.name, club: m.club }));
   const groupMode = window.__selectedGroupMode || "two";
-  const name = TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length];
+  // Thursday/Friday = the official league, using its normal rotating name
+  // pool. Any other day someone gathers = an unofficial friendly get-
+  // together, named separately so it never disturbs the official name
+  // rotation (and its own counter, so a Tuesday kickabout doesn't skip
+  // ahead in the "official" tournament numbering).
+  const isOfficial = isOfficialPlayDay();
+  const name = isOfficial
+    ? TOURNAMENT_NAMES[appState.tournamentIndex % TOURNAMENT_NAMES.length]
+    : `تجمع ودي #${(appState.friendlyTournamentIndex || 0) + 1}`;
   const useSeeding = groupMode === "two" && window.__useSeeding !== false;
 
   // If the last champion/runner-up confirmed their attendance and seeding is
@@ -1688,7 +1711,7 @@ function startNewTournament() {
   const singleBuild = groupMode === "one" ? buildRoundRobinMatches(shuffle(allPlayers)) : null;
 
   const base = {
-    id: uid(), name, groupMode,
+    id: uid(), name, groupMode, isOfficial,
     stage: groupMode === "two" ? "wheel" : "single",
     players: allPlayers,
     // wheelOrder starts with the seeded champion already occupying the first
@@ -1719,7 +1742,8 @@ function startNewTournament() {
   const channelLine = groupMode === "two"
     ? "📺 شاهدوا القرعة حصرياً على قنوات العزبة MAX 1 وMAX 2!"
     : "📺 شاهدوا حصرياً على قناة العزبة MAX!";
-  sendPushNotification(`بدأت ${name} 🏆`, `${channelLine}${predictionsHint}`);
+  const officialTag = isOfficial ? "" : " (ودية)";
+  sendPushNotification(`بدأت ${name} 🏆${officialTag}`, `${channelLine}${predictionsHint}`);
 }
 
 function updateCurrent(patch) {
@@ -1728,16 +1752,17 @@ function updateCurrent(patch) {
 
 async function finishTournament(champion, runnerUp, semifinalistsOut, finalStandingsAll) {
   const cur = appState.current;
-  // Checked against the archive as it stands right NOW, before this
-  // tournament's own entry gets appended below — otherwise the just-added
-  // entry would always satisfy the check and "first title" could never be
-  // detected correctly.
-  const isFirstTitle = !!champion && !appState.archive.some(t => t.champion === champion.name);
+  // "First title" is scoped to the SAME bucket (official vs friendly) as
+  // this tournament — a player's first-ever official title and first-ever
+  // friendly title are tracked separately, matching how the two stats
+  // pages never mix with each other.
+  const sameKindArchive = appState.archive.filter(t => (t.isOfficial !== false) === cur.isOfficial);
+  const isFirstTitle = !!champion && !sameKindArchive.some(t => t.champion === champion.name);
   const archiveEntry = {
     // Reuse the live tournament's own id (instead of generating a new one)
     // so predictions saved against this tournament while it was live —
     // keyed by this same id — stay correctly linked to it after archiving.
-    id: cur.id, name: cur.name,
+    id: cur.id, name: cur.name, isOfficial: cur.isOfficial,
     champion: champion?.name || null,
     runnerUp: runnerUp?.name || null,
     semifinalists: semifinalistsOut.map(p => p?.name).filter(Boolean),
@@ -1751,18 +1776,27 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
   // same play day, so the confirmed list stays until the user explicitly
   // ends the play day from the members screen.
   await persist({
-    tournamentIndex: appState.tournamentIndex + 1,
+    // Only the official league's numbering advances for an official
+    // tournament; a friendly get-together advances its own separate
+    // counter instead, so a random Tuesday kickabout never skips ahead in
+    // the official name rotation.
+    tournamentIndex: appState.tournamentIndex + (cur.isOfficial ? 1 : 0),
+    friendlyTournamentIndex: (appState.friendlyTournamentIndex || 0) + (cur.isOfficial ? 0 : 1),
     archive: [...appState.archive, archiveEntry],
     current: null,
     // Remember who won/came second so the NEXT tournament can offer to seed
     // them directly into group one / group two instead of the wheel draw.
-    lastChampion: champion ? { id: champion.id, name: champion.name } : null,
-    lastRunnerUp: runnerUp ? { id: runnerUp.id, name: runnerUp.name } : null,
+    // Only official results feed seeding for the next OFFICIAL tournament —
+    // a friendly get-together's winner shouldn't get seeded into Thursday's
+    // real league.
+    lastChampion: cur.isOfficial ? (champion ? { id: champion.id, name: champion.name } : null) : appState.lastChampion,
+    lastRunnerUp: cur.isOfficial ? (runnerUp ? { id: runnerUp.id, name: runnerUp.name } : null) : appState.lastRunnerUp,
   });
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
   if (champion) {
     const firstTitleHint = isFirstTitle ? " 🎉 (أول لقب له!)" : "";
-    sendPushNotification(`👑 بطل ${cur.name}`, `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
+    const officialTag = cur.isOfficial ? "" : " (ودية)";
+    sendPushNotification(`👑 بطل ${cur.name}${officialTag}`, `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
     celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
     render();
     playChampionFanfare();
@@ -2072,7 +2106,7 @@ function proceedToGroups() {
     groupATotalRounds: buildA.totalRounds,
     groupBTotalRounds: buildB.totalRounds,
   });
-  sendPushNotification("🔮 التوقعات مفتوحة!", "اكتملت المجموعات — سجل توقعك للصاعدين والبطل قبل ما تبدأ النتائج");
+  sendPushNotification(`🔮 التوقعات مفتوحة!${cur.isOfficial ? "" : " (ودية)"}`, "اكتملت المجموعات — سجل توقعك للصاعدين والبطل قبل ما تبدأ النتائج");
 }
 
 function doUpdateMatchField(which, matchId, field, value) {
@@ -2108,7 +2142,7 @@ function doGoToKnockout() {
     promotedGroupA: [a1?.name, a2?.name].filter(Boolean),
     promotedGroupB: [b1?.name, b2?.name].filter(Boolean),
   });
-  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `📺 MAX 1: ${a1?.name} ضد ${b2?.name}\n📺 MAX 2: ${b1?.name} ضد ${a2?.name}`);
+  sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${a1?.name} ضد ${b2?.name}\n📺 MAX 2: ${b1?.name} ضد ${a2?.name}`);
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2131,7 +2165,7 @@ function doGoToKnockoutFromSingle() {
     promotedNames,
     promotedTop4: promotedNames.slice(),
   });
-  sendPushNotification("🥊 بدأت الأدوار الإقصائية!", `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
+  sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
 }
 
 // Fun, varied "demolition" notifications — fires only when a match's FINAL
@@ -2180,12 +2214,13 @@ function doUpdateSemiField(key, field, value) {
 }
 
 function doGoToFinal() {
-  const semis = appState.current.semis;
+  const cur = appState.current;
+  const semis = cur.semis;
   const w1 = semis.m1.scoreA > semis.m1.scoreB ? semis.m1.a : semis.m1.scoreA < semis.m1.scoreB ? semis.m1.b : null;
   const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
   if (!w1 || !w2) return;
   updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
-  sendPushNotification("🏆 النهائي!", `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
+  sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
 }
 
 function doUpdateFinalField(field, value) {
@@ -2818,18 +2853,19 @@ function statBlockHtml(title, icon, rows, valueKey, suffix) {
   return `<div class="stat-block"><div class="stat-block-title">${icon} ${title}</div>${rowsHtml}</div>`;
 }
 
-function statsPanelHtml(archive, compact) {
-  const wrapClass = compact ? "sidebar-card" : "card theme-stats";
+function statsPanelHtml(archive, compact, labelOverride) {
+  const label = labelOverride || { title: "التصنيفات التاريخية", icon: "📊", themeClass: "theme-stats", emptyNote: "ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً." };
+  const wrapClass = compact ? "sidebar-card" : `card ${label.themeClass}`;
   if (!archive || archive.length === 0) {
     return `<div class="${wrapClass}">
-      <div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية</div>
-      <div class="empty-note">ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً.</div>
+      <div class="section-icon-title"><span class="icon">${label.icon}</span>${label.title}</div>
+      <div class="empty-note">${label.emptyNote}</div>
     </div>`;
   }
   const stats = computeHistoricalStats(archive);
   const predictionLeaderboard = computePredictionLeaderboard(archive, predictions);
   let html = `<div class="${wrapClass}">
-    ${compact ? `<h3 class="group-title">التصنيفات التاريخية (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">📊</span>التصنيفات التاريخية (${archive.length} بطولة مكتملة)</div>`}
+    ${compact ? `<h3 class="group-title">${label.title} (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">${label.icon}</span>${label.title} (${archive.length} بطولة مكتملة)</div>`}
     ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()">📄 تصدير التصنيفات والأرشيف PDF</button>` : ""}
     ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
     ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
@@ -2859,6 +2895,38 @@ function statsPanelHtml(archive, compact) {
   }
   html += `</div>`;
   return html;
+}
+
+// Friendly get-togethers (any day other than Thursday/Friday) get their own
+// completely separate stats page — same layout/logic as the official one,
+// just fed only the archive entries tagged isOfficial === false, so a
+// casual Tuesday kickabout never affects the real league's rankings.
+function friendlyTournamentsPageHtml() {
+  const friendlyArchive = appState.archive.filter(t => t.isOfficial === false);
+  return statsPanelHtml(friendlyArchive, false, {
+    title: "البطولات الودية",
+    icon: "🎉",
+    themeClass: "theme-friendly",
+    emptyNote: "ما فيه تجمعات ودية مسجّلة بعد. أي تأكيد حضور بيوم غير الخميس/الجمعة يبدأ بطولة ودية منفصلة تلقائياً.",
+  });
+}
+
+// The compact sidebar shown next to the live "current tournament" screen
+// matches whichever bucket is actually being played right now — official
+// stats while playing the real Thursday/Friday league, friendly stats while
+// playing a midweek get-together — so the numbers on screen always relate
+// to the match actually in progress.
+function sidebarStatsForCurrentContext() {
+  const isFriendlyLive = appState.current && appState.current.isOfficial === false;
+  if (isFriendlyLive) {
+    const friendlyArchive = appState.archive.filter(t => t.isOfficial === false);
+    return statsPanelHtml(friendlyArchive, true, {
+      title: "التصنيفات الودية", icon: "🎉", themeClass: "theme-friendly",
+      emptyNote: "ما فيه تجمعات ودية سابقة بعد.",
+    });
+  }
+  const officialArchive = appState.archive.filter(t => t.isOfficial !== false);
+  return statsPanelHtml(officialArchive, true);
 }
 
 // ============ Main render ============
@@ -3148,15 +3216,17 @@ function render() {
       <button class="tab-btn ${view==='members'?'active':''}" onclick="setView('members')">قائمة الأعضاء</button>
       <button class="tab-btn ${view==='tournament'?'active':''}" onclick="setView('tournament')">البطولة الحالية</button>
       <button class="tab-btn ${view==='stats'?'active':''}" onclick="setView('stats')">التصنيفات التاريخية</button>
+      <button class="tab-btn ${view==='friendly'?'active':''}" onclick="setView('friendly')">🎉 ودية</button>
     </div>
     <div class="layout">
       <main>
         ${view === "members" ? membersStageHtml() : ""}
         ${view === "tournament" ? tournamentFlowHtml() : ""}
-        ${view === "stats" ? statsPanelHtml(appState.archive, false) : ""}
+        ${view === "stats" ? statsPanelHtml(appState.archive.filter(t => t.isOfficial !== false), false) : ""}
+        ${view === "friendly" ? friendlyTournamentsPageHtml() : ""}
         ${view === "profile" ? profilePageHtml() : ""}
       </main>
-      ${view === "tournament" ? `<aside class="sidebar">${statsPanelHtml(appState.archive, true)}</aside>` : ""}
+      ${view === "tournament" ? `<aside class="sidebar">${sidebarStatsForCurrentContext()}</aside>` : ""}
     </div>
     ${loginModalHtml()}
     ${messageModalHtml()}

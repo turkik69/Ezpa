@@ -118,6 +118,11 @@
     background: rgba(242,238,227,0.03); border-radius:8px; padding:10px 12px; margin-bottom:8px;
   }
   .market-player-name { font-weight:800; font-size:13.5px; }
+  .market-player-pos {
+    display:inline-block; background: rgba(201,162,75,0.18); color:#E4C06E;
+    font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:4px;
+    letter-spacing:0.3px; vertical-align:middle;
+  }
   .market-player-value { font-size:11.5px; color: rgba(242,238,227,0.55); margin-top:2px; }
 
   /* ---- Champion celebration overlay ---- */
@@ -865,6 +870,8 @@ async function rejectTransferOffer(offerId) {
   offer.resolved_at = new Date().toISOString();
   render();
   await patchTransferOffer(offerId, { status: "rejected", resolved_at: offer.resolved_at });
+  const targetPlayer = playerById(offer.target_player_id);
+  sendPushNotification("❌ رُفضت الصفقة", `${offer.to_club} رفض عرض ${offer.from_club} على ${targetPlayer?.player_name || "اللاعب"}`);
 }
 
 async function withdrawTransferOffer(offerId) {
@@ -3516,7 +3523,7 @@ function offerDraftFormHtml() {
       <div class="add-member-label" style="margin-top:10px;">اختر لاعبك للمبادلة</div>
       <select class="text-input" onchange="updateOfferDraft('offeredPlayerId', this.value)">
         <option value="">— اختر لاعب —</option>
-        ${myRoster.map(p => `<option value="${p.id}" ${draft.offeredPlayerId===p.id?"selected":""}>${escapeHtml(p.player_name)} (${formatOMR(p.market_value)})</option>`).join("")}
+        ${myRoster.map(p => `<option value="${p.id}" ${draft.offeredPlayerId===p.id?"selected":""}>${p.position ? `[${escapeHtml(p.position)}] ` : ""}${escapeHtml(p.player_name)} (${formatOMR(p.market_value)})</option>`).join("")}
       </select>
       <input class="text-input" type="number" min="0" placeholder="فرق نقدي (اختياري)" value="${escapeHtml(draft.cashAmount || "")}" oninput="updateOfferDraft('cashAmount', this.value)" style="margin-top:8px;">
       <div class="input-row" style="margin-top:8px;">
@@ -3543,7 +3550,7 @@ function marketModalHtml() {
     : roster.map(p => `
       <div class="market-player-row">
         <div class="market-player-info">
-          <div class="market-player-name">${escapeHtml(p.player_name)}</div>
+          <div class="market-player-name">${p.position ? `<span class="market-player-pos">${escapeHtml(p.position)}</span> ` : ""}${escapeHtml(p.player_name)}</div>
           <div class="market-player-value">💰 ${formatOMR(p.market_value)}</div>
         </div>
         ${!isMyClub ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}

@@ -780,6 +780,30 @@ async function patchPlayerClub(playerId, newClub) {
   if (!res.ok) { const t = await res.text(); throw new Error("update player club failed: " + t); }
 }
 
+async function patchPlayerDetails(playerId, patch) {
+  const res = await fetch(CLUB_PLAYERS_URL + "?id=eq." + encodeURIComponent(playerId), {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json", Prefer: "return=minimal",
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error("update player details failed: " + t); }
+}
+
+async function insertClubPlayerRecord(player) {
+  const res = await fetch(CLUB_PLAYERS_URL, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json", Prefer: "return=minimal",
+    },
+    body: JSON.stringify(player),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error("insert player failed: " + t); }
+}
+
 async function insertTransferOffer(offer) {
   const res = await fetch(TRANSFER_OFFERS_URL, {
     method: "POST",
@@ -1339,6 +1363,10 @@ let transferOffers = []; // [{id, offer_type, from_club, to_club, target_player_
 let marketView = null; // null | { club } — which club's roster page is open
 let offerDraft = null; // null | { type:'buy'|'swap', targetPlayerId, offeredPlayerId, cashAmount, cashDirection, error }
 let counterDraft = {}; // { [offerId]: { cashAmount, error } } — per-offer counter-proposal draft
+// Turki-only roster management: adding a forgotten player, or fixing a
+// mis-entered position/value on an existing one.
+let playerAddDraft = null; // null | { club, name, position, marketValue, error }
+let playerEditDraft = null; // null | { playerId, name, position, marketValue, error }
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
 let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1623,6 +1651,95 @@ window.doWithdrawOffer = async function(offerId) {
   if (offer.from_club !== myClub && offer.to_club !== myClub) return;
   if (!confirm("سحب العرض/المفاوضة نهائياً؟")) return;
   await withdrawTransferOffer(offerId);
+};
+
+// ---- Roster management (Turki-only) ----
+window.openAddPlayerDraft = function(club) {
+  if (!requirePermission("turki")) return;
+  playerAddDraft = { club, name: "", position: "", marketValue: "5000", error: "" };
+  render();
+};
+
+window.updateAddPlayerDraft = function(field, value) {
+  if (!playerAddDraft) return;
+  playerAddDraft[field] = value;
+};
+
+window.cancelAddPlayerDraft = function() {
+  playerAddDraft = null;
+  render();
+};
+
+window.submitAddPlayer = async function() {
+  if (!requirePermission("turki")) return;
+  const draft = playerAddDraft;
+  if (!draft) return;
+  const name = (draft.name || "").trim();
+  if (!name) { draft.error = "لازم تكتب اسم اللاعب."; render(); return; }
+  const value = draft.marketValue !== "" ? Number(draft.marketValue) : 0;
+  if (isNaN(value) || value < 0) { draft.error = "القيمة لازم تكون رقم صفر أو أكبر."; render(); return; }
+  const newPlayer = {
+    id: uid(), club: draft.club, player_name: name,
+    position: (draft.position || "").trim().toUpperCase(), market_value: value,
+  };
+  clubPlayers.push(newPlayer);
+  render();
+  try {
+    await insertClubPlayerRecord(newPlayer);
+    playerAddDraft = null;
+    render();
+  } catch (e) {
+    console.error(e);
+    clubPlayers = clubPlayers.filter(p => p.id !== newPlayer.id);
+    draft.error = "تعذر إضافة اللاعب، حاول مرة ثانية.";
+    render();
+  }
+};
+
+window.openPlayerEditDraft = function(playerId) {
+  if (!requirePermission("turki")) return;
+  const p = playerById(playerId);
+  if (!p) return;
+  playerEditDraft = { playerId, name: p.player_name, position: p.position || "", marketValue: String(p.market_value || 0), error: "" };
+  render();
+};
+
+window.updatePlayerEditDraft = function(field, value) {
+  if (!playerEditDraft) return;
+  playerEditDraft[field] = value;
+};
+
+window.cancelPlayerEditDraft = function() {
+  playerEditDraft = null;
+  render();
+};
+
+window.submitPlayerEdit = async function() {
+  if (!requirePermission("turki")) return;
+  const draft = playerEditDraft;
+  if (!draft) return;
+  const name = (draft.name || "").trim();
+  if (!name) { draft.error = "الاسم ما يقدر يكون فاضي."; render(); return; }
+  const value = draft.marketValue !== "" ? Number(draft.marketValue) : 0;
+  if (isNaN(value) || value < 0) { draft.error = "القيمة لازم تكون رقم صفر أو أكبر."; render(); return; }
+  const p = playerById(draft.playerId);
+  if (!p) return;
+  const backup = { player_name: p.player_name, position: p.position, market_value: p.market_value };
+  const newPosition = (draft.position || "").trim().toUpperCase();
+  p.player_name = name;
+  p.position = newPosition;
+  p.market_value = value;
+  render();
+  try {
+    await patchPlayerDetails(draft.playerId, { player_name: name, position: newPosition, market_value: value });
+    playerEditDraft = null;
+    render();
+  } catch (e) {
+    console.error(e);
+    Object.assign(p, backup);
+    draft.error = "تعذر حفظ التعديل، حاول مرة ثانية.";
+    render();
+  }
 };
 
 window.updateMessageField = function(field, value) {
@@ -3537,6 +3654,32 @@ function offerDraftFormHtml() {
   </div>`;
 }
 
+function playerEditFormHtml() {
+  const draft = playerEditDraft;
+  return `<div class="prediction-group-box" style="margin-top:8px; margin-bottom:8px;">
+    <div class="prediction-group-title">✏️ تعديل بيانات اللاعب</div>
+    <input class="text-input" placeholder="اسم اللاعب" value="${escapeHtml(draft.name)}" oninput="updatePlayerEditDraft('name', this.value)">
+    <input class="text-input" placeholder="المركز (مثلاً CB, GK, CF)" value="${escapeHtml(draft.position)}" oninput="updatePlayerEditDraft('position', this.value)" style="margin-top:8px; text-transform:uppercase;">
+    <input class="text-input" type="number" min="0" placeholder="القيمة السوقية (ر.ع)" value="${escapeHtml(draft.marketValue)}" oninput="updatePlayerEditDraft('marketValue', this.value)" style="margin-top:8px;">
+    ${draft.error ? `<div class="warn-note">${escapeHtml(draft.error)}</div>` : ""}
+    <button class="cta-btn" style="margin-top:8px;" onclick="submitPlayerEdit()">حفظ التعديل</button>
+    <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.6;" onclick="cancelPlayerEditDraft()">إلغاء</button>
+  </div>`;
+}
+
+function playerAddFormHtml() {
+  const draft = playerAddDraft;
+  return `<div class="prediction-group-box" style="margin-top:10px;">
+    <div class="prediction-group-title">+ إضافة لاعب لنادي ${escapeHtml(draft.club)}</div>
+    <input class="text-input" placeholder="اسم اللاعب" value="${escapeHtml(draft.name)}" oninput="updateAddPlayerDraft('name', this.value)">
+    <input class="text-input" placeholder="المركز (مثلاً CB, GK, CF)" value="${escapeHtml(draft.position)}" oninput="updateAddPlayerDraft('position', this.value)" style="margin-top:8px; text-transform:uppercase;">
+    <input class="text-input" type="number" min="0" placeholder="القيمة السوقية (ر.ع)" value="${escapeHtml(draft.marketValue)}" oninput="updateAddPlayerDraft('marketValue', this.value)" style="margin-top:8px;">
+    ${draft.error ? `<div class="warn-note">${escapeHtml(draft.error)}</div>` : ""}
+    <button class="cta-btn" style="margin-top:8px;" onclick="submitAddPlayer()">إضافة اللاعب</button>
+    <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.6;" onclick="cancelAddPlayerDraft()">إلغاء</button>
+  </div>`;
+}
+
 function marketModalHtml() {
   if (!marketView) return "";
   const club = marketView.club;
@@ -3544,18 +3687,27 @@ function marketModalHtml() {
   const roster = playersForClub(club);
   const myClub = currentUserClub();
   const isMyClub = myClub === club;
+  const turkiManaging = isTurki();
 
   const rosterHtml = roster.length === 0
     ? `<div class="empty-note">ما فيه لاعبين مسجلين لهذا النادي بعد</div>`
-    : roster.map(p => `
+    : roster.map(p => {
+        if (turkiManaging && playerEditDraft && playerEditDraft.playerId === p.id) {
+          return playerEditFormHtml();
+        }
+        return `
       <div class="market-player-row">
         <div class="market-player-info">
           <div class="market-player-name">${p.position ? `<span class="market-player-pos">${escapeHtml(p.position)}</span> ` : ""}${escapeHtml(p.player_name)}</div>
           <div class="market-player-value">💰 ${formatOMR(p.market_value)}</div>
         </div>
-        ${!isMyClub ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}
+        <div style="display:flex; gap:6px;">
+          ${!isMyClub ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}
+          ${turkiManaging ? `<button class="member-remove-btn" style="width:auto; padding:8px 10px; font-size:12px; opacity:0.8;" onclick="openPlayerEditDraft('${p.id}')">✏️</button>` : ""}
+        </div>
       </div>
-    `).join("");
+    `;
+      }).join("");
 
   const relevantOffers = transferOffers.filter(o => (o.from_club === club || o.to_club === club) && o.status === "pending");
 
@@ -3566,6 +3718,7 @@ function marketModalHtml() {
       <div class="archive-divider"></div>
       <div class="add-member-label">قائمة اللاعبين (${roster.length})</div>
       ${rosterHtml}
+      ${turkiManaging ? (playerAddDraft && playerAddDraft.club === club ? playerAddFormHtml() : `<button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.8;" onclick="openAddPlayerDraft('${escapeHtml(club).replace(/'/g,"\\'")}')">+ إضافة لاعب منسي</button>`) : ""}
       ${offerDraft ? offerDraftFormHtml() : ""}
       ${relevantOffers.length > 0 ? `
         <div class="archive-divider"></div>

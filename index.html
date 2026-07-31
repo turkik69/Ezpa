@@ -124,6 +124,15 @@
     letter-spacing:0.3px; vertical-align:middle;
   }
   .market-player-value { font-size:11.5px; color: rgba(242,238,227,0.55); margin-top:2px; }
+  .market-club-row {
+    display:flex; align-items:center; gap:12px;
+    background: rgba(242,238,227,0.03); border:1px solid rgba(242,238,227,0.08);
+    border-radius:10px; padding:12px 14px; margin-bottom:8px; cursor:pointer;
+    transition: background 0.15s ease;
+  }
+  .market-club-row:hover { background: rgba(242,238,227,0.06); }
+  .market-club-row .club-logo-sm { width:32px; height:32px; object-fit:contain; flex-shrink:0; }
+  .market-club-info { flex:1; min-width:0; }
 
   /* ---- Champion celebration overlay ---- */
   .celebration-overlay {
@@ -191,16 +200,25 @@
   h1 { font-size:25px; font-weight:900; letter-spacing:-0.3px; color:#F2EEE3; }
   .subtitle { font-size:12.5px; color: rgba(242,238,227,0.55); margin-top:3px; margin-bottom:18px; letter-spacing:0.2px; }
 
-  .tab-row { max-width:1440px; margin:0 auto 20px; display:flex; gap:4px; flex-wrap:nowrap;
-    border-bottom: 1px solid rgba(242,238,227,0.1); padding-bottom: 0; }
+  .tab-row {
+    max-width:1440px; margin:0 auto 20px; display:flex; gap:4px;
+    border-bottom: 1px solid rgba(242,238,227,0.1); padding-bottom: 0;
+    /* Horizontal scroll instead of shrinking text to force-fit — a more
+       robust pattern than continuing to shave font-size every time a new
+       tab gets added (this is already the 5th), and it degrades gracefully
+       for any future additions too. */
+    overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .tab-row::-webkit-scrollbar { display:none; }
   .tab-btn {
     padding:11px 16px; border:none; border-bottom:2px solid transparent;
     background: transparent; color: rgba(242,238,227,0.5);
     font-weight:800; font-size:13.5px; cursor:pointer; transition: color 0.15s ease, border-color 0.15s ease;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; min-width:0;
+    white-space:nowrap; flex:0 0 auto;
   }
   @media (max-width: 480px) {
-    .tab-btn { padding:9px 4px; font-size:10.5px; }
+    .tab-btn { padding:10px 12px; font-size:12px; }
   }
   .tab-btn.active { color:#E4C06E; border-bottom-color:#C9A24B; }
   .tab-btn:hover:not(.active) { color: rgba(242,238,227,0.8); }
@@ -2067,9 +2085,14 @@ async function pollLoad() {
     // before they're done. Same idea for the champion celebration: rebuilding
     // the DOM would swap in a fresh <canvas>, restarting the fireworks from
     // scratch every 4 seconds instead of letting the one animation play out.
-    // The data above is still updated in memory, so the next render (e.g.
-    // right after they finish typing, or close the celebration) reflects it.
-    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration) {
+    // Same for the transfer-market roster modal: it's a long scrollable
+    // list, and a full rebuild every 4 seconds was resetting scroll position
+    // back to the top mid-browse and could even swallow an in-flight tap on
+    // "تقديم عرض" if the poll fired at the wrong instant. The data above is
+    // still updated in memory regardless, so the next render (e.g. right
+    // after they finish typing, close the celebration, or close the market
+    // modal) reflects it correctly.
+    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration && !marketView) {
       render();
     }
     syncBadge.textContent = "متصل ✓ مباشر";
@@ -3680,6 +3703,34 @@ function playerAddFormHtml() {
   </div>`;
 }
 
+// The ten clubs, listed once here so the market's home page always shows
+// all of them even if a club currently has zero registered players yet.
+const ALL_CLUBS = ["الأهلي","التعاون","الدحيل","الشرطة","العين","النصر","الوحدة","الهلال","شباب أهلي دبي","السد"];
+
+function marketPageHtml() {
+  const myClub = currentUserClub();
+  const rows = ALL_CLUBS.map(club => {
+    const count = playersForClub(club).length;
+    const budget = budgetFor(club);
+    const isMine = club === myClub;
+    return `
+      <div class="market-club-row" onclick="openMarketView('${escapeHtml(club).replace(/'/g,"\\'")}')">
+        ${clubLogoHtml(club, "club-logo-sm")}
+        <div class="market-club-info">
+          <div class="market-player-name">${escapeHtml(club)}${isMine ? ' <span class="market-player-pos">ناديك</span>' : ""}</div>
+          <div class="market-player-value">${count} لاعب · 💰 ${formatOMR(budget)}</div>
+        </div>
+        <span style="opacity:0.4;">‹</span>
+      </div>`;
+  }).join("");
+
+  return `<div class="card theme-friendly">
+    <div class="section-icon-title"><span class="icon">⚽</span>سوق الانتقالات</div>
+    <p class="hint">اضغط على أي نادي عشان تشوف قائمة لاعبيه، وتقدر تقدّم عرض شراء أو مبادلة على أي لاعب من نادي غير ناديك.</p>
+    ${rows}
+  </div>`;
+}
+
 function marketModalHtml() {
   if (!marketView) return "";
   const club = marketView.club;
@@ -3892,6 +3943,7 @@ function render() {
       <button class="tab-btn ${view==='tournament'?'active':''}" onclick="setView('tournament')">البطولة الحالية</button>
       <button class="tab-btn ${view==='stats'?'active':''}" onclick="setView('stats')">التصنيفات التاريخية</button>
       <button class="tab-btn ${view==='friendly'?'active':''}" onclick="setView('friendly')">🎉 ودية</button>
+      <button class="tab-btn ${view==='market'?'active':''}" onclick="setView('market')">⚽ سوق الانتقالات</button>
     </div>
     <div class="layout">
       <main>
@@ -3899,6 +3951,7 @@ function render() {
         ${view === "tournament" ? tournamentFlowHtml() : ""}
         ${view === "stats" ? statsPanelHtml(appState.archive.filter(t => t.isOfficial !== false), false) : ""}
         ${view === "friendly" ? friendlyTournamentsPageHtml() : ""}
+        ${view === "market" ? marketPageHtml() : ""}
         ${view === "profile" ? profilePageHtml() : ""}
       </main>
       ${view === "tournament" ? `<aside class="sidebar">${sidebarStatsForCurrentContext()}</aside>` : ""}

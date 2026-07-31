@@ -2914,7 +2914,7 @@ function membersStageHtml() {
     <div class="member-row ${m.confirmed ? 'confirmed' : ''}">
       <div class="member-info">
         <div class="member-name">${coloredNameHtml(m.name)}${m.is_guest ? '<span class="guest-tag">ضيف</span>' : ''}</div>
-        <div class="member-club" onclick="openMarketView('${escapeHtml(m.club).replace(/'/g,"\\'")}')" style="cursor:pointer;">${clubLogoHtml(m.club)}<span style="text-decoration:underline dotted;">${escapeHtml(m.club)}</span></div>
+        <div class="member-club">${clubLogoHtml(m.club)}<span>${escapeHtml(m.club)}</span></div>
       </div>
       <button class="confirm-btn ${m.confirmed ? 'confirmed-btn' : ''}" onclick="toggleConfirm('${m.id}')">
         ${m.confirmed ? '✓ مؤكد' : 'تأكيد الحضور'}
@@ -3746,18 +3746,23 @@ function marketModalHtml() {
         if (turkiManaging && playerEditDraft && playerEditDraft.playerId === p.id) {
           return playerEditFormHtml();
         }
-        return `
+        const isOfferingThisPlayer = offerDraft && offerDraft.targetPlayerId === p.id;
+        const row = `
       <div class="market-player-row">
         <div class="market-player-info">
           <div class="market-player-name">${p.position ? `<span class="market-player-pos">${escapeHtml(p.position)}</span> ` : ""}${escapeHtml(p.player_name)}</div>
           <div class="market-player-value">💰 ${formatOMR(p.market_value)}</div>
         </div>
         <div style="display:flex; gap:6px;">
-          ${!isMyClub ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}
+          ${!isMyClub && !isOfferingThisPlayer ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}
           ${turkiManaging ? `<button class="member-remove-btn" style="width:auto; padding:8px 10px; font-size:12px; opacity:0.8;" onclick="openPlayerEditDraft('${p.id}')">✏️</button>` : ""}
         </div>
       </div>
     `;
+        // The offer form appears immediately under the specific player it's
+        // for — not scrolled away at the bottom of the whole roster — so
+        // submitting an offer never requires hunting for where it landed.
+        return isOfferingThisPlayer ? row + offerDraftFormHtml() : row;
       }).join("");
 
   const relevantOffers = transferOffers.filter(o => (o.from_club === club || o.to_club === club) && o.status === "pending");
@@ -3770,7 +3775,6 @@ function marketModalHtml() {
       <div class="add-member-label">قائمة اللاعبين (${roster.length})</div>
       ${rosterHtml}
       ${turkiManaging ? (playerAddDraft && playerAddDraft.club === club ? playerAddFormHtml() : `<button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.8;" onclick="openAddPlayerDraft('${escapeHtml(club).replace(/'/g,"\\'")}')">+ إضافة لاعب منسي</button>`) : ""}
-      ${offerDraft ? offerDraftFormHtml() : ""}
       ${relevantOffers.length > 0 ? `
         <div class="archive-divider"></div>
         <div class="add-member-label">مفاوضات جارية (${relevantOffers.length})</div>
@@ -3925,6 +3929,17 @@ function render() {
     app.innerHTML = `<div class="loading-box">جارِ تحميل بيانات الدوري المشتركة...</div>`;
     return;
   }
+  // The app rebuilds the whole DOM on every state change (simplest correct
+  // approach for a single-file app with no framework). That's fine almost
+  // everywhere, but it silently resets scroll position inside any long
+  // scrollable box — most noticeably the transfer-market modal, where
+  // typing a cash amount or tapping a button mid-scroll would otherwise
+  // yank the view back to the top every time. Capturing and restoring the
+  // modal's scrollTop across the rebuild fixes that without needing to
+  // rewrite the render architecture.
+  const existingModalBox = document.querySelector(".modal-box");
+  const savedScrollTop = existingModalBox ? existingModalBox.scrollTop : null;
+
   const headerSubtitle = appState.current ? escapeHtml(appState.current.name) : "بانتظار بطولة جديدة";
   const canGoBack = view !== HOME_VIEW;
 
@@ -3961,6 +3976,10 @@ function render() {
     ${marketModalHtml()}
     ${celebrationHtml()}
   `;
+  if (savedScrollTop != null) {
+    const newModalBox = document.querySelector(".modal-box");
+    if (newModalBox) newModalBox.scrollTop = savedScrollTop;
+  }
   if (celebration) startCelebrationAnimation();
 }
 

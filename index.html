@@ -106,33 +106,6 @@
     max-width:380px; width:100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     max-height:85vh; overflow-y:auto;
   }
-  .modal-box-wide { max-width:480px; }
-
-  .market-budget-badge {
-    display:inline-block; background: rgba(90,190,140,0.14); color:#7FDBA0;
-    font-weight:800; font-size:13px; padding:7px 14px; border-radius:8px;
-    border:1.5px solid rgba(90,190,140,0.4); margin-top:8px;
-  }
-  .market-player-row {
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background: rgba(242,238,227,0.03); border-radius:8px; padding:10px 12px; margin-bottom:8px;
-  }
-  .market-player-name { font-weight:800; font-size:13.5px; }
-  .market-player-pos {
-    display:inline-block; background: rgba(201,162,75,0.18); color:#E4C06E;
-    font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:4px;
-    letter-spacing:0.3px; vertical-align:middle;
-  }
-  .market-player-value { font-size:11.5px; color: rgba(242,238,227,0.55); margin-top:2px; }
-  .market-club-row {
-    display:flex; align-items:center; gap:12px;
-    background: rgba(242,238,227,0.03); border:1px solid rgba(242,238,227,0.08);
-    border-radius:10px; padding:12px 14px; margin-bottom:8px; cursor:pointer;
-    transition: background 0.15s ease;
-  }
-  .market-club-row:hover { background: rgba(242,238,227,0.06); }
-  .market-club-row .club-logo-sm { width:32px; height:32px; object-fit:contain; flex-shrink:0; }
-  .market-club-info { flex:1; min-width:0; }
 
   /* ---- Champion celebration overlay ---- */
   .celebration-overlay {
@@ -745,252 +718,6 @@ async function uploadMessageImage(file) {
   return STORAGE_PUBLIC_URL + filename;
 }
 
-// ============ Transfer market ============
-const CLUB_BUDGETS_URL = SUPABASE_URL + "/rest/v1/ezba_club_budgets";
-const CLUB_PLAYERS_URL = SUPABASE_URL + "/rest/v1/ezba_club_players";
-const TRANSFER_OFFERS_URL = SUPABASE_URL + "/rest/v1/ezba_transfer_offers";
-
-async function fetchClubBudgets() {
-  const res = await fetch(CLUB_BUDGETS_URL + "?select=*", {
-    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-  });
-  if (!res.ok) throw new Error("fetch budgets failed: " + res.status);
-  return await res.json();
-}
-
-async function fetchClubPlayers() {
-  const res = await fetch(CLUB_PLAYERS_URL + "?select=*&order=player_name.asc", {
-    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-  });
-  if (!res.ok) throw new Error("fetch players failed: " + res.status);
-  return await res.json();
-}
-
-async function fetchTransferOffers() {
-  const res = await fetch(TRANSFER_OFFERS_URL + "?select=*&order=updated_at.desc", {
-    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-  });
-  if (!res.ok) throw new Error("fetch offers failed: " + res.status);
-  return await res.json();
-}
-
-async function patchClubBudget(club, newBudget) {
-  const res = await fetch(CLUB_BUDGETS_URL + "?club=eq." + encodeURIComponent(club), {
-    method: "PATCH",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify({ budget: newBudget, updated_at: new Date().toISOString() }),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("update budget failed: " + t); }
-}
-
-async function patchPlayerClub(playerId, newClub) {
-  const res = await fetch(CLUB_PLAYERS_URL + "?id=eq." + encodeURIComponent(playerId), {
-    method: "PATCH",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify({ club: newClub }),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("update player club failed: " + t); }
-}
-
-async function patchPlayerDetails(playerId, patch) {
-  const res = await fetch(CLUB_PLAYERS_URL + "?id=eq." + encodeURIComponent(playerId), {
-    method: "PATCH",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify(patch),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("update player details failed: " + t); }
-}
-
-async function insertClubPlayerRecord(player) {
-  const res = await fetch(CLUB_PLAYERS_URL, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify(player),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("insert player failed: " + t); }
-}
-
-async function insertTransferOffer(offer) {
-  const res = await fetch(TRANSFER_OFFERS_URL, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify(offer),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("create offer failed: " + t); }
-}
-
-async function patchTransferOffer(offerId, patch) {
-  const res = await fetch(TRANSFER_OFFERS_URL + "?id=eq." + encodeURIComponent(offerId), {
-    method: "PATCH",
-    headers: {
-      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error("update offer failed: " + t); }
-}
-
-// ---- Transfer market business logic ----
-function budgetFor(club) {
-  const b = clubBudgets.find(x => x.club === club);
-  return b ? b.budget : 0;
-}
-function updateLocalBudget(club, newAmount) {
-  const b = clubBudgets.find(x => x.club === club);
-  if (b) b.budget = newAmount;
-}
-function playerById(id) {
-  return clubPlayers.find(p => p.id === id);
-}
-function playersForClub(club) {
-  return clubPlayers.filter(p => p.club === club);
-}
-// Whose turn it is to respond to a pending offer: whichever side did NOT
-// make the most recent proposal.
-function offerAwaitingClub(offer) {
-  return offer.last_actor === "from" ? offer.to_club : offer.from_club;
-}
-
-async function createTransferOffer({ offerType, fromClub, toClub, targetPlayerId, offeredPlayerId, cashAmount, cashDirection, memberId }) {
-  const offer = {
-    id: uid(),
-    offer_type: offerType,
-    from_club: fromClub,
-    to_club: toClub,
-    target_player_id: targetPlayerId,
-    offered_player_id: offeredPlayerId || null,
-    cash_amount: cashAmount != null ? cashAmount : null,
-    cash_direction: cashDirection || null,
-    status: "pending",
-    last_actor: "from",
-    history: [{ actor: "from", cash_amount: cashAmount != null ? cashAmount : null, cash_direction: cashDirection || null, at: new Date().toISOString() }],
-    created_by_member_id: memberId,
-  };
-  transferOffers.push(offer);
-  render();
-  await insertTransferOffer(offer);
-  const targetPlayer = playerById(targetPlayerId);
-  sendPushNotification("💰 عرض انتقال جديد", `${fromClub} يقدّم عرض ${offerType === "buy" ? "شراء" : "مبادلة"} على ${targetPlayer?.player_name || "لاعب"}`);
-  return offer;
-}
-
-async function counterTransferOffer(offerId, newCashAmount, newCashDirection) {
-  const offer = transferOffers.find(o => o.id === offerId);
-  if (!offer) return;
-  const actor = offer.last_actor === "from" ? "to" : "from";
-  const newHistory = [...(offer.history || []), { actor, cash_amount: newCashAmount, cash_direction: newCashDirection || offer.cash_direction || null, at: new Date().toISOString() }];
-  offer.cash_amount = newCashAmount;
-  if (newCashDirection) offer.cash_direction = newCashDirection;
-  offer.last_actor = actor;
-  offer.history = newHistory;
-  render();
-  await patchTransferOffer(offerId, { cash_amount: newCashAmount, cash_direction: offer.cash_direction, last_actor: actor, history: newHistory });
-  const respondingClub = actor === "from" ? offer.from_club : offer.to_club;
-  sendPushNotification("🔁 رد على عرض انتقال", `${respondingClub} قدّم سعر معدّل — بانتظار ردكم`);
-}
-
-async function rejectTransferOffer(offerId) {
-  const offer = transferOffers.find(o => o.id === offerId);
-  if (!offer) return;
-  offer.status = "rejected";
-  offer.resolved_at = new Date().toISOString();
-  render();
-  await patchTransferOffer(offerId, { status: "rejected", resolved_at: offer.resolved_at });
-  const targetPlayer = playerById(offer.target_player_id);
-  sendPushNotification("❌ رُفضت الصفقة", `${offer.to_club} رفض عرض ${offer.from_club} على ${targetPlayer?.player_name || "اللاعب"}`);
-}
-
-async function withdrawTransferOffer(offerId) {
-  const offer = transferOffers.find(o => o.id === offerId);
-  if (!offer) return;
-  offer.status = "withdrawn";
-  offer.resolved_at = new Date().toISOString();
-  render();
-  await patchTransferOffer(offerId, { status: "withdrawn", resolved_at: offer.resolved_at });
-}
-
-async function acceptTransferOffer(offerId) {
-  const offer = transferOffers.find(o => o.id === offerId);
-  if (!offer) return { ok: false, reason: "not-found" };
-
-  const cash = offer.cash_amount || 0;
-  if (offer.offer_type === "buy" && cash > 0 && budgetFor(offer.from_club) < cash) {
-    return { ok: false, reason: "insufficient-budget" };
-  }
-  if (offer.offer_type === "swap" && cash > 0) {
-    const payer = offer.cash_direction === "to_pays" ? offer.to_club : offer.from_club;
-    if (budgetFor(payer) < cash) return { ok: false, reason: "insufficient-budget" };
-  }
-
-  const targetPlayer = playerById(offer.target_player_id);
-  const offeredPlayer = offer.offered_player_id ? playerById(offer.offered_player_id) : null;
-  const dbOps = [];
-
-  if (offer.offer_type === "buy") {
-    const newBuyerBudget = budgetFor(offer.from_club) - cash;
-    const newSellerBudget = budgetFor(offer.to_club) + cash;
-    updateLocalBudget(offer.from_club, newBuyerBudget);
-    updateLocalBudget(offer.to_club, newSellerBudget);
-    dbOps.push(patchClubBudget(offer.from_club, newBuyerBudget));
-    dbOps.push(patchClubBudget(offer.to_club, newSellerBudget));
-    if (targetPlayer) {
-      targetPlayer.club = offer.from_club;
-      dbOps.push(patchPlayerClub(targetPlayer.id, offer.from_club));
-    }
-  } else {
-    if (targetPlayer) { targetPlayer.club = offer.from_club; dbOps.push(patchPlayerClub(targetPlayer.id, offer.from_club)); }
-    if (offeredPlayer) { offeredPlayer.club = offer.to_club; dbOps.push(patchPlayerClub(offeredPlayer.id, offer.to_club)); }
-    if (cash > 0) {
-      const [payer, payee] = offer.cash_direction === "to_pays" ? [offer.to_club, offer.from_club] : [offer.from_club, offer.to_club];
-      const newPayerBudget = budgetFor(payer) - cash;
-      const newPayeeBudget = budgetFor(payee) + cash;
-      updateLocalBudget(payer, newPayerBudget);
-      updateLocalBudget(payee, newPayeeBudget);
-      dbOps.push(patchClubBudget(payer, newPayerBudget));
-      dbOps.push(patchClubBudget(payee, newPayeeBudget));
-    }
-  }
-
-  // Any other pending offer touching either player just involved in this
-  // deal no longer makes sense (the player has moved) — auto-withdraw them
-  // so nobody accidentally accepts a stale offer for a player who's gone.
-  const involvedPlayerIds = [offer.target_player_id, offer.offered_player_id].filter(Boolean);
-  transferOffers.forEach(o => {
-    if (o.id !== offer.id && o.status === "pending" &&
-        (involvedPlayerIds.includes(o.target_player_id) || involvedPlayerIds.includes(o.offered_player_id))) {
-      o.status = "withdrawn";
-      o.resolved_at = new Date().toISOString();
-      dbOps.push(patchTransferOffer(o.id, { status: "withdrawn", resolved_at: o.resolved_at }));
-    }
-  });
-
-  offer.status = "accepted";
-  offer.resolved_at = new Date().toISOString();
-  render();
-  dbOps.push(patchTransferOffer(offer.id, { status: "accepted", resolved_at: offer.resolved_at }));
-  await Promise.all(dbOps);
-
-  sendPushNotification("✅ صفقة انتقال مكتملة!", `${targetPlayer?.player_name || "لاعب"} انتقل من ${offer.to_club} إلى ${offer.from_club}`);
-  return { ok: true };
-}
-
-
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -1373,18 +1100,6 @@ let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_
 // Draft state for the prediction form (mirrors the addMemberDraft pattern —
 // tracked here so a background poll re-render never wipes in-progress picks).
 let predictionDraft = null; // null | { groupA:[], groupB:[], top4:[], finalists:[], champion:null }
-let clubBudgets = []; // [{club, budget}]
-let clubPlayers = []; // [{id, club, player_name, market_value}]
-let transferOffers = []; // [{id, offer_type, from_club, to_club, target_player_id, offered_player_id, cash_amount, cash_direction, status, last_actor, history, ...}]
-// UI state for the market: which club's roster is currently open, and the
-// draft for whatever offer/counter form is currently being filled in.
-let marketView = null; // null | { club } — which club's roster page is open
-let offerDraft = null; // null | { type:'buy'|'swap', targetPlayerId, offeredPlayerId, cashAmount, cashDirection, error }
-let counterDraft = {}; // { [offerId]: { cashAmount, error } } — per-offer counter-proposal draft
-// Turki-only roster management: adding a forgotten player, or fixing a
-// mis-entered position/value on an existing one.
-let playerAddDraft = null; // null | { club, name, position, marketValue, error }
-let playerEditDraft = null; // null | { playerId, name, position, marketValue, error }
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
 let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1534,230 +1249,6 @@ window.openMessageModal = function() {
 window.closeMessageModal = function() {
   messageModal = null;
   render();
-};
-
-// ---- Transfer market handlers ----
-function currentUserClub() {
-  const user = getCurrentUser();
-  if (!user) return null;
-  const m = members.find(x => x.id === user.id);
-  return m ? m.club : null;
-}
-
-window.openMarketView = function(club) {
-  marketView = { club };
-  offerDraft = null;
-  render();
-};
-
-window.closeMarketView = function() {
-  marketView = null;
-  offerDraft = null;
-  render();
-};
-
-window.openOfferDraft = function(targetPlayerId, toClub) {
-  if (!requirePermission("member")) return;
-  const myClub = currentUserClub();
-  if (!myClub) return;
-  if (myClub === toClub) { alert("ما تقدر تقدم عرض على لاعب من ناديك أنت."); return; }
-  offerDraft = { type: "buy", targetPlayerId, toClub, offeredPlayerId: null, cashAmount: "", cashDirection: "from_pays", error: "" };
-  render();
-};
-
-window.cancelOfferDraft = function() {
-  offerDraft = null;
-  render();
-};
-
-window.setOfferDraftType = function(type) {
-  if (!offerDraft) return;
-  offerDraft.type = type;
-  offerDraft.error = "";
-  render();
-};
-
-window.updateOfferDraft = function(field, value) {
-  if (!offerDraft) return;
-  offerDraft[field] = value;
-};
-
-window.submitOfferDraft = async function() {
-  if (!requirePermission("member")) return;
-  const myClub = currentUserClub();
-  const user = getCurrentUser();
-  const draft = offerDraft;
-  if (!draft || !myClub || !user) return;
-  const cashAmount = draft.cashAmount !== "" ? Number(draft.cashAmount) : null;
-
-  if (draft.type === "buy") {
-    if (!cashAmount || cashAmount <= 0) { draft.error = "لازم تكتب مبلغ صحيح أكبر من صفر."; render(); return; }
-  } else {
-    if (!draft.offeredPlayerId) { draft.error = "لازم تختار لاعب من ناديك للمبادلة."; render(); return; }
-    if (cashAmount != null && cashAmount < 0) { draft.error = "المبلغ لازم يكون صفر أو أكبر."; render(); return; }
-  }
-
-  try {
-    await createTransferOffer({
-      offerType: draft.type,
-      fromClub: myClub,
-      toClub: draft.toClub,
-      targetPlayerId: draft.targetPlayerId,
-      offeredPlayerId: draft.type === "swap" ? draft.offeredPlayerId : null,
-      cashAmount: cashAmount,
-      cashDirection: draft.type === "swap" && cashAmount ? draft.cashDirection : null,
-      memberId: user.id,
-    });
-    offerDraft = null;
-    render();
-  } catch (e) {
-    console.error(e);
-    draft.error = "تعذر إرسال العرض، حاول مرة ثانية.";
-    render();
-  }
-};
-
-window.updateCounterDraft = function(offerId, value) {
-  counterDraft[offerId] = { ...(counterDraft[offerId] || {}), cashAmount: value };
-};
-
-window.submitCounter = async function(offerId) {
-  if (!requirePermission("member")) return;
-  const offer = transferOffers.find(o => o.id === offerId);
-  const myClub = currentUserClub();
-  if (!offer || !myClub) return;
-  if (offerAwaitingClub(offer) !== myClub) { alert("مو دورك بالرد على هذا العرض الحين."); return; }
-  const draft = counterDraft[offerId] || {};
-  const newCash = draft.cashAmount !== undefined && draft.cashAmount !== "" ? Number(draft.cashAmount) : offer.cash_amount;
-  if (newCash == null || newCash < 0) { alert("اكتب مبلغ صحيح."); return; }
-  await counterTransferOffer(offerId, newCash, offer.cash_direction);
-  delete counterDraft[offerId];
-  render();
-};
-
-window.doAcceptOffer = async function(offerId) {
-  if (!requirePermission("member")) return;
-  const offer = transferOffers.find(o => o.id === offerId);
-  const myClub = currentUserClub();
-  if (!offer || !myClub) return;
-  if (offerAwaitingClub(offer) !== myClub) { alert("مو دورك بالرد على هذا العرض الحين."); return; }
-  if (!confirm("متأكد تبي تقبل هذا العرض؟ الصفقة تنفّذ فوراً بدون رجعة.")) return;
-  const result = await acceptTransferOffer(offerId);
-  if (!result.ok) {
-    if (result.reason === "insufficient-budget") {
-      alert("تعذر القبول — الطرف الآخر ما عنده رصيد كافٍ حالياً لإتمام الصفقة.");
-    } else {
-      alert("تعذر تنفيذ الصفقة، حاول مرة ثانية.");
-    }
-  }
-};
-
-window.doRejectOffer = async function(offerId) {
-  if (!requirePermission("member")) return;
-  const offer = transferOffers.find(o => o.id === offerId);
-  const myClub = currentUserClub();
-  if (!offer || !myClub) return;
-  if (offerAwaitingClub(offer) !== myClub) { alert("مو دورك بالرد على هذا العرض الحين."); return; }
-  await rejectTransferOffer(offerId);
-};
-
-window.doWithdrawOffer = async function(offerId) {
-  if (!requirePermission("member")) return;
-  const offer = transferOffers.find(o => o.id === offerId);
-  const myClub = currentUserClub();
-  if (!offer || !myClub) return;
-  if (offer.from_club !== myClub && offer.to_club !== myClub) return;
-  if (!confirm("سحب العرض/المفاوضة نهائياً؟")) return;
-  await withdrawTransferOffer(offerId);
-};
-
-// ---- Roster management (Turki-only) ----
-window.openAddPlayerDraft = function(club) {
-  if (!requirePermission("turki")) return;
-  playerAddDraft = { club, name: "", position: "", marketValue: "5000", error: "" };
-  render();
-};
-
-window.updateAddPlayerDraft = function(field, value) {
-  if (!playerAddDraft) return;
-  playerAddDraft[field] = value;
-};
-
-window.cancelAddPlayerDraft = function() {
-  playerAddDraft = null;
-  render();
-};
-
-window.submitAddPlayer = async function() {
-  if (!requirePermission("turki")) return;
-  const draft = playerAddDraft;
-  if (!draft) return;
-  const name = (draft.name || "").trim();
-  if (!name) { draft.error = "لازم تكتب اسم اللاعب."; render(); return; }
-  const value = draft.marketValue !== "" ? Number(draft.marketValue) : 0;
-  if (isNaN(value) || value < 0) { draft.error = "القيمة لازم تكون رقم صفر أو أكبر."; render(); return; }
-  const newPlayer = {
-    id: uid(), club: draft.club, player_name: name,
-    position: (draft.position || "").trim().toUpperCase(), market_value: value,
-  };
-  clubPlayers.push(newPlayer);
-  render();
-  try {
-    await insertClubPlayerRecord(newPlayer);
-    playerAddDraft = null;
-    render();
-  } catch (e) {
-    console.error(e);
-    clubPlayers = clubPlayers.filter(p => p.id !== newPlayer.id);
-    draft.error = "تعذر إضافة اللاعب، حاول مرة ثانية.";
-    render();
-  }
-};
-
-window.openPlayerEditDraft = function(playerId) {
-  if (!requirePermission("turki")) return;
-  const p = playerById(playerId);
-  if (!p) return;
-  playerEditDraft = { playerId, name: p.player_name, position: p.position || "", marketValue: String(p.market_value || 0), error: "" };
-  render();
-};
-
-window.updatePlayerEditDraft = function(field, value) {
-  if (!playerEditDraft) return;
-  playerEditDraft[field] = value;
-};
-
-window.cancelPlayerEditDraft = function() {
-  playerEditDraft = null;
-  render();
-};
-
-window.submitPlayerEdit = async function() {
-  if (!requirePermission("turki")) return;
-  const draft = playerEditDraft;
-  if (!draft) return;
-  const name = (draft.name || "").trim();
-  if (!name) { draft.error = "الاسم ما يقدر يكون فاضي."; render(); return; }
-  const value = draft.marketValue !== "" ? Number(draft.marketValue) : 0;
-  if (isNaN(value) || value < 0) { draft.error = "القيمة لازم تكون رقم صفر أو أكبر."; render(); return; }
-  const p = playerById(draft.playerId);
-  if (!p) return;
-  const backup = { player_name: p.player_name, position: p.position, market_value: p.market_value };
-  const newPosition = (draft.position || "").trim().toUpperCase();
-  p.player_name = name;
-  p.position = newPosition;
-  p.market_value = value;
-  render();
-  try {
-    await patchPlayerDetails(draft.playerId, { player_name: name, position: newPosition, market_value: value });
-    playerEditDraft = null;
-    render();
-  } catch (e) {
-    console.error(e);
-    Object.assign(p, backup);
-    draft.error = "تعذر حفظ التعديل، حاول مرة ثانية.";
-    render();
-  }
 };
 
 window.updateMessageField = function(field, value) {
@@ -2068,31 +1559,20 @@ function isUserInteractingWithInput() {
 async function pollLoad() {
   if (pendingWrites > 0) return; // a local change is still being saved, skip this cycle
   try {
-    const [data, mem, preds, budgets, players, offers] = await Promise.all([
-      fetchState(), fetchMembers(), fetchPredictions(),
-      fetchClubBudgets(), fetchClubPlayers(), fetchTransferOffers(),
-    ]);
+    const [data, mem, preds] = await Promise.all([fetchState(), fetchMembers(), fetchPredictions()]);
     if (pendingWrites > 0) return; // a write started while we were fetching, discard this snapshot
     if (data && !wheelUi.spinning) appState = data;
     members = mem;
     predictions = preds;
-    clubBudgets = budgets;
-    clubPlayers = players;
-    transferOffers = offers;
     // Don't tear down and rebuild the DOM while the user has any field
     // focused (a text input being typed into, or a score dropdown open) —
     // that would wipe out what they're typing or force-close the dropdown
     // before they're done. Same idea for the champion celebration: rebuilding
     // the DOM would swap in a fresh <canvas>, restarting the fireworks from
     // scratch every 4 seconds instead of letting the one animation play out.
-    // Same for the transfer-market roster modal: it's a long scrollable
-    // list, and a full rebuild every 4 seconds was resetting scroll position
-    // back to the top mid-browse and could even swallow an in-flight tap on
-    // "تقديم عرض" if the poll fired at the wrong instant. The data above is
-    // still updated in memory regardless, so the next render (e.g. right
-    // after they finish typing, close the celebration, or close the market
-    // modal) reflects it correctly.
-    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration && !marketView) {
+    // The data above is still updated in memory, so the next render (e.g.
+    // right after they finish typing, or close the celebration) reflects it.
+    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration) {
       render();
     }
     syncBadge.textContent = "متصل ✓ مباشر";
@@ -3530,19 +3010,6 @@ function profilePageHtml() {
     <button class="cta-btn" style="margin-top:10px;" onclick="submitCustomization()">حفظ التخصيص</button>
     ${profileModal.customizationSuccess ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
 
-    ${(() => {
-      const myClub = currentUserClub();
-      if (!myClub) return "";
-      const myOffers = transferOffers.filter(o => o.from_club === myClub || o.to_club === myClub);
-      const pendingCount = myOffers.filter(o => o.status === "pending").length;
-      if (myOffers.length === 0) return "";
-      return `
-        <div class="archive-divider"></div>
-        <div class="add-member-label">⚽ مفاوضات ${escapeHtml(myClub)}${pendingCount > 0 ? ` (${pendingCount} معلّقة)` : ""}</div>
-        ${myOffers.map(o => negotiationRowHtml(o)).join("")}
-      `;
-    })()}
-
     <div class="archive-divider"></div>
     <div class="add-member-label">الإشعارات</div>
     <p class="hint">فعّل الإشعارات عشان توصلك تنبيهات (تأكيد حضور، بداية بطولة، نتائج نهائي) حتى لو التطبيق مقفول. التفعيل خاص بهذا الجهاز فقط.</p>
@@ -3593,194 +3060,6 @@ function messageModalHtml() {
       ${messageModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(messageModal.success)}</div>` : ""}
       <button class="cta-btn" ${(messageModal.sending || messageModal.uploading) ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : "📢 إرسال الآن"}</button>
       <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeMessageModal()">إلغاء</button>
-    </div>
-  </div>`;
-}
-
-function formatOMR(amount) {
-  return (amount || 0).toLocaleString("en-US") + " ر.ع";
-}
-
-function negotiationRowHtml(offer) {
-  const myClub = currentUserClub();
-  const targetPlayer = playerById(offer.target_player_id);
-  const offeredPlayer = offer.offered_player_id ? playerById(offer.offered_player_id) : null;
-  const isMyTurn = offer.status === "pending" && offerAwaitingClub(offer) === myClub;
-  const isInvolved = offer.from_club === myClub || offer.to_club === myClub;
-
-  const typeLabel = offer.offer_type === "buy" ? "💰 شراء" : "🔁 مبادلة";
-  const cashLabel = offer.cash_amount != null
-    ? (offer.offer_type === "buy"
-        ? formatOMR(offer.cash_amount)
-        : `فرق ${formatOMR(offer.cash_amount)} (يدفعه ${offer.cash_direction === "to_pays" ? offer.to_club : offer.from_club})`)
-    : "";
-
-  let statusHtml = "";
-  if (offer.status === "pending") {
-    if (isMyTurn) {
-      statusHtml = `
-        <div class="input-row" style="margin-top:8px;">
-          <button class="cta-btn" style="flex:1; padding:8px; font-size:12.5px;" onclick="doAcceptOffer('${offer.id}')">✅ قبول</button>
-          <button class="cta-btn danger" style="flex:1; padding:8px; font-size:12.5px;" onclick="doRejectOffer('${offer.id}')">❌ رفض</button>
-        </div>
-        <div class="input-row" style="margin-top:6px;">
-          <input class="text-input" type="number" min="0" placeholder="رد بسعر معدّل" oninput="updateCounterDraft('${offer.id}', this.value)">
-          <button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12.5px;" onclick="submitCounter('${offer.id}')">🔁 رد</button>
-        </div>`;
-    } else if (isInvolved) {
-      statusHtml = `<div class="hint">⏳ بانتظار رد ${escapeHtml(offerAwaitingClub(offer))}</div>
-        <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.7;" onclick="doWithdrawOffer('${offer.id}')">سحب العرض</button>`;
-    }
-  } else {
-    const statusText = { accepted: "✅ تمت الصفقة", rejected: "❌ مرفوض", withdrawn: "🚫 مسحوب" }[offer.status] || offer.status;
-    statusHtml = `<div class="hint">${statusText}</div>`;
-  }
-
-  return `<div class="prediction-row">
-    <div class="prediction-row-name">${typeLabel}: ${escapeHtml(offer.from_club)} ⇄ ${escapeHtml(offer.to_club)}</div>
-    <div class="prediction-row-picks">
-      الهدف: ${escapeHtml(targetPlayer?.player_name || "—")}${offeredPlayer ? ` · مقابل: ${escapeHtml(offeredPlayer.player_name)}` : ""}${cashLabel ? ` · ${cashLabel}` : ""}
-    </div>
-    ${statusHtml}
-  </div>`;
-}
-
-function offerDraftFormHtml() {
-  const draft = offerDraft;
-  const targetPlayer = playerById(draft.targetPlayerId);
-  const myClub = currentUserClub();
-  const myRoster = playersForClub(myClub);
-
-  return `<div class="prediction-group-box" style="margin-top:14px;">
-    <div class="prediction-group-title">عرضك على ${escapeHtml(targetPlayer?.player_name || "")}</div>
-    <div class="input-row">
-      <button class="tab-btn ${draft.type==='buy'?'active':''}" onclick="setOfferDraftType('buy')" style="flex:1;">💰 شراء</button>
-      <button class="tab-btn ${draft.type==='swap'?'active':''}" onclick="setOfferDraftType('swap')" style="flex:1;">🔁 مبادلة</button>
-    </div>
-    ${draft.type === "buy" ? `
-      <input class="text-input" type="number" min="0" placeholder="المبلغ المعروض (ر.ع)" value="${escapeHtml(draft.cashAmount || "")}" oninput="updateOfferDraft('cashAmount', this.value)" style="margin-top:10px;">
-    ` : `
-      <div class="add-member-label" style="margin-top:10px;">اختر لاعبك للمبادلة</div>
-      <select class="text-input" onchange="updateOfferDraft('offeredPlayerId', this.value)">
-        <option value="">— اختر لاعب —</option>
-        ${myRoster.map(p => `<option value="${p.id}" ${draft.offeredPlayerId===p.id?"selected":""}>${p.position ? `[${escapeHtml(p.position)}] ` : ""}${escapeHtml(p.player_name)} (${formatOMR(p.market_value)})</option>`).join("")}
-      </select>
-      <input class="text-input" type="number" min="0" placeholder="فرق نقدي (اختياري)" value="${escapeHtml(draft.cashAmount || "")}" oninput="updateOfferDraft('cashAmount', this.value)" style="margin-top:8px;">
-      <div class="input-row" style="margin-top:8px;">
-        <label class="checkbox-row"><input type="radio" name="cashDir" ${draft.cashDirection==="from_pays"?"checked":""} onchange="updateOfferDraft('cashDirection','from_pays')"> أنا أدفع الفرق</label>
-        <label class="checkbox-row"><input type="radio" name="cashDir" ${draft.cashDirection==="to_pays"?"checked":""} onchange="updateOfferDraft('cashDirection','to_pays')"> يدفع هو الفرق</label>
-      </div>
-    `}
-    ${draft.error ? `<div class="warn-note">${escapeHtml(draft.error)}</div>` : ""}
-    <button class="cta-btn" style="margin-top:10px;" onclick="submitOfferDraft()">إرسال العرض</button>
-    <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.6;" onclick="cancelOfferDraft()">إلغاء</button>
-  </div>`;
-}
-
-function playerEditFormHtml() {
-  const draft = playerEditDraft;
-  return `<div class="prediction-group-box" style="margin-top:8px; margin-bottom:8px;">
-    <div class="prediction-group-title">✏️ تعديل بيانات اللاعب</div>
-    <input class="text-input" placeholder="اسم اللاعب" value="${escapeHtml(draft.name)}" oninput="updatePlayerEditDraft('name', this.value)">
-    <input class="text-input" placeholder="المركز (مثلاً CB, GK, CF)" value="${escapeHtml(draft.position)}" oninput="updatePlayerEditDraft('position', this.value)" style="margin-top:8px; text-transform:uppercase;">
-    <input class="text-input" type="number" min="0" placeholder="القيمة السوقية (ر.ع)" value="${escapeHtml(draft.marketValue)}" oninput="updatePlayerEditDraft('marketValue', this.value)" style="margin-top:8px;">
-    ${draft.error ? `<div class="warn-note">${escapeHtml(draft.error)}</div>` : ""}
-    <button class="cta-btn" style="margin-top:8px;" onclick="submitPlayerEdit()">حفظ التعديل</button>
-    <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.6;" onclick="cancelPlayerEditDraft()">إلغاء</button>
-  </div>`;
-}
-
-function playerAddFormHtml() {
-  const draft = playerAddDraft;
-  return `<div class="prediction-group-box" style="margin-top:10px;">
-    <div class="prediction-group-title">+ إضافة لاعب لنادي ${escapeHtml(draft.club)}</div>
-    <input class="text-input" placeholder="اسم اللاعب" value="${escapeHtml(draft.name)}" oninput="updateAddPlayerDraft('name', this.value)">
-    <input class="text-input" placeholder="المركز (مثلاً CB, GK, CF)" value="${escapeHtml(draft.position)}" oninput="updateAddPlayerDraft('position', this.value)" style="margin-top:8px; text-transform:uppercase;">
-    <input class="text-input" type="number" min="0" placeholder="القيمة السوقية (ر.ع)" value="${escapeHtml(draft.marketValue)}" oninput="updateAddPlayerDraft('marketValue', this.value)" style="margin-top:8px;">
-    ${draft.error ? `<div class="warn-note">${escapeHtml(draft.error)}</div>` : ""}
-    <button class="cta-btn" style="margin-top:8px;" onclick="submitAddPlayer()">إضافة اللاعب</button>
-    <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.6;" onclick="cancelAddPlayerDraft()">إلغاء</button>
-  </div>`;
-}
-
-// The ten clubs, listed once here so the market's home page always shows
-// all of them even if a club currently has zero registered players yet.
-const ALL_CLUBS = ["الأهلي","التعاون","الدحيل","الشرطة","العين","النصر","الوحدة","الهلال","شباب أهلي دبي","السد"];
-
-function marketPageHtml() {
-  const myClub = currentUserClub();
-  const rows = ALL_CLUBS.map(club => {
-    const count = playersForClub(club).length;
-    const budget = budgetFor(club);
-    const isMine = club === myClub;
-    return `
-      <div class="market-club-row" onclick="openMarketView('${escapeHtml(club).replace(/'/g,"\\'")}')">
-        ${clubLogoHtml(club, "club-logo-sm")}
-        <div class="market-club-info">
-          <div class="market-player-name">${escapeHtml(club)}${isMine ? ' <span class="market-player-pos">ناديك</span>' : ""}</div>
-          <div class="market-player-value">${count} لاعب · 💰 ${formatOMR(budget)}</div>
-        </div>
-        <span style="opacity:0.4;">‹</span>
-      </div>`;
-  }).join("");
-
-  return `<div class="card theme-friendly">
-    <div class="section-icon-title"><span class="icon">⚽</span>سوق الانتقالات</div>
-    <p class="hint">اضغط على أي نادي عشان تشوف قائمة لاعبيه، وتقدر تقدّم عرض شراء أو مبادلة على أي لاعب من نادي غير ناديك.</p>
-    ${rows}
-  </div>`;
-}
-
-function marketModalHtml() {
-  if (!marketView) return "";
-  const club = marketView.club;
-  const budget = budgetFor(club);
-  const roster = playersForClub(club);
-  const myClub = currentUserClub();
-  const isMyClub = myClub === club;
-  const turkiManaging = isTurki();
-
-  const rosterHtml = roster.length === 0
-    ? `<div class="empty-note">ما فيه لاعبين مسجلين لهذا النادي بعد</div>`
-    : roster.map(p => {
-        if (turkiManaging && playerEditDraft && playerEditDraft.playerId === p.id) {
-          return playerEditFormHtml();
-        }
-        const isOfferingThisPlayer = offerDraft && offerDraft.targetPlayerId === p.id;
-        const row = `
-      <div class="market-player-row">
-        <div class="market-player-info">
-          <div class="market-player-name">${p.position ? `<span class="market-player-pos">${escapeHtml(p.position)}</span> ` : ""}${escapeHtml(p.player_name)}</div>
-          <div class="market-player-value">💰 ${formatOMR(p.market_value)}</div>
-        </div>
-        <div style="display:flex; gap:6px;">
-          ${!isMyClub && !isOfferingThisPlayer ? `<button class="cta-btn" style="width:auto; padding:8px 14px; font-size:12px;" onclick="openOfferDraft('${p.id}','${escapeHtml(club).replace(/'/g,"\\'")}')">تقديم عرض</button>` : ""}
-          ${turkiManaging ? `<button class="member-remove-btn" style="width:auto; padding:8px 10px; font-size:12px; opacity:0.8;" onclick="openPlayerEditDraft('${p.id}')">✏️</button>` : ""}
-        </div>
-      </div>
-    `;
-        // The offer form appears immediately under the specific player it's
-        // for — not scrolled away at the bottom of the whole roster — so
-        // submitting an offer never requires hunting for where it landed.
-        return isOfferingThisPlayer ? row + offerDraftFormHtml() : row;
-      }).join("");
-
-  const relevantOffers = transferOffers.filter(o => (o.from_club === club || o.to_club === club) && o.status === "pending");
-
-  return `<div class="modal-overlay" onclick="if(event.target===this) closeMarketView()">
-    <div class="modal-box modal-box-wide">
-      <div class="section-icon-title"><span class="icon">⚽</span>${escapeHtml(club)}</div>
-      <div class="market-budget-badge">💰 الميزانية: ${formatOMR(budget)}</div>
-      <div class="archive-divider"></div>
-      <div class="add-member-label">قائمة اللاعبين (${roster.length})</div>
-      ${rosterHtml}
-      ${turkiManaging ? (playerAddDraft && playerAddDraft.club === club ? playerAddFormHtml() : `<button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.8;" onclick="openAddPlayerDraft('${escapeHtml(club).replace(/'/g,"\\'")}')">+ إضافة لاعب منسي</button>`) : ""}
-      ${relevantOffers.length > 0 ? `
-        <div class="archive-divider"></div>
-        <div class="add-member-label">مفاوضات جارية (${relevantOffers.length})</div>
-        ${relevantOffers.map(o => negotiationRowHtml(o)).join("")}
-      ` : ""}
-      <button class="member-remove-btn" style="width:100%; margin-top:12px; opacity:0.6;" onclick="closeMarketView()">إغلاق</button>
     </div>
   </div>`;
 }
@@ -3958,7 +3237,6 @@ function render() {
       <button class="tab-btn ${view==='tournament'?'active':''}" onclick="setView('tournament')">البطولة الحالية</button>
       <button class="tab-btn ${view==='stats'?'active':''}" onclick="setView('stats')">التصنيفات التاريخية</button>
       <button class="tab-btn ${view==='friendly'?'active':''}" onclick="setView('friendly')">🎉 ودية</button>
-      <button class="tab-btn ${view==='market'?'active':''}" onclick="setView('market')">⚽ سوق الانتقالات</button>
     </div>
     <div class="layout">
       <main>
@@ -3966,14 +3244,12 @@ function render() {
         ${view === "tournament" ? tournamentFlowHtml() : ""}
         ${view === "stats" ? statsPanelHtml(appState.archive.filter(t => t.isOfficial !== false), false) : ""}
         ${view === "friendly" ? friendlyTournamentsPageHtml() : ""}
-        ${view === "market" ? marketPageHtml() : ""}
         ${view === "profile" ? profilePageHtml() : ""}
       </main>
       ${view === "tournament" ? `<aside class="sidebar">${sidebarStatsForCurrentContext()}</aside>` : ""}
     </div>
     ${loginModalHtml()}
     ${messageModalHtml()}
-    ${marketModalHtml()}
     ${celebrationHtml()}
   `;
   if (savedScrollTop != null) {

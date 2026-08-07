@@ -394,6 +394,13 @@
     border:1px solid rgba(201,162,75,0.3);
   }
   .warn-note { font-size:12px; color:#D13F35; margin-top:8px; text-align:center; font-weight:700; }
+  .penalty-shootout-box {
+    margin-top:14px; padding:14px; border-radius:10px;
+    background: rgba(240,168,104,0.08); border:1.5px dashed rgba(240,168,104,0.4);
+  }
+  .penalty-shootout-label {
+    font-size:12.5px; font-weight:800; color:#F0A868; text-align:center; margin-bottom:10px;
+  }
 
   .stat-block { margin-bottom:18px; }
   .stat-block-title {
@@ -2139,8 +2146,8 @@ function doGoToKnockout() {
   updateCurrent({
     stage: "knockout",
     semis: {
-      m1: { id:uid(), label:"نصف النهائي 1", a:a1, b:b2, scoreA:null, scoreB:null },
-      m2: { id:uid(), label:"نصف النهائي 2", a:b1, b:a2, scoreA:null, scoreB:null },
+      m1: { id:uid(), label:"نصف النهائي 1", a:a1, b:b2, scoreA:null, scoreB:null, penA:null, penB:null },
+      m2: { id:uid(), label:"نصف النهائي 2", a:b1, b:a2, scoreA:null, scoreB:null, penA:null, penB:null },
     },
     tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
     fullStandings: [...finalTableA, ...finalTableB],
@@ -2166,8 +2173,8 @@ function doGoToKnockoutFromSingle() {
   updateCurrent({
     stage: "knockout",
     semis: {
-      m1: { id:uid(), label:"نصف النهائي 1", a:p1, b:p4, scoreA:null, scoreB:null },
-      m2: { id:uid(), label:"نصف النهائي 2", a:p2, b:p3, scoreA:null, scoreB:null },
+      m1: { id:uid(), label:"نصف النهائي 1", a:p1, b:p4, scoreA:null, scoreB:null, penA:null, penB:null },
+      m2: { id:uid(), label:"نصف النهائي 2", a:p2, b:p3, scoreA:null, scoreB:null, penA:null, penB:null },
     },
     tiebreakLog: [...(cur.tiebreakLog || []), ...log],
     fullStandings: finalTable,
@@ -2213,6 +2220,22 @@ function notifyIfFreshDemolition(match, field, newValue) {
   sendPushNotification("🔥 تدمير!", phrase(winner.name, loser.name));
 }
 
+// Resolves the winner of a knockout match (semi-final or final), falling
+// back to penalty-shootout scores when regulation time ended level — a
+// draw can't stand in a knockout round, exactly like real football, where
+// it goes to penalties to produce a decider.
+function resolveKnockoutWinner(match) {
+  if (!match || match.scoreA == null || match.scoreB == null) return null;
+  if (match.scoreA !== match.scoreB) {
+    return match.scoreA > match.scoreB ? match.a : match.b;
+  }
+  // Regulation ended level — check the penalty shootout. A draw on
+  // penalties isn't a valid result (there's always a decider in real
+  // football), so only resolve once the two penalty scores actually differ.
+  if (match.penA == null || match.penB == null || match.penA === match.penB) return null;
+  return match.penA > match.penB ? match.a : match.b;
+}
+
 function doUpdateSemiField(key, field, value) {
   const cur = appState.current;
   const semis = cur.semis;
@@ -2225,10 +2248,10 @@ function doUpdateSemiField(key, field, value) {
 function doGoToFinal() {
   const cur = appState.current;
   const semis = cur.semis;
-  const w1 = semis.m1.scoreA > semis.m1.scoreB ? semis.m1.a : semis.m1.scoreA < semis.m1.scoreB ? semis.m1.b : null;
-  const w2 = semis.m2.scoreA > semis.m2.scoreB ? semis.m2.a : semis.m2.scoreA < semis.m2.scoreB ? semis.m2.b : null;
+  const w1 = resolveKnockoutWinner(semis.m1);
+  const w2 = resolveKnockoutWinner(semis.m2);
   if (!w1 || !w2) return;
-  updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null } });
+  updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null, penA: null, penB: null } });
   sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
 }
 
@@ -2242,7 +2265,7 @@ function doUpdateFinalField(field, value) {
 function doFinishKnockout() {
   const cur = appState.current;
   const final = cur.final;
-  const champion = final.scoreA > final.scoreB ? final.a : final.scoreA < final.scoreB ? final.b : null;
+  const champion = resolveKnockoutWinner(final);
   if (!champion) return;
   const runnerUp = champion.id === final.a.id ? final.b : final.a;
   const semis = cur.semis;
@@ -2640,9 +2663,30 @@ function singleGroupStageHtml() {
   </div>`;
 }
 
+// Shared by both semi-final panels and the final match display: shows a
+// penalty-shootout mini-section only once regulation time ends level,
+// letting the two clubs enter a decisive shootout score instead of the
+// app just refusing to let the tournament move forward on a draw.
+function penaltyShootoutHtml(match, buildOnchange) {
+  const isDraw = match.scoreA != null && match.scoreB != null && match.scoreA === match.scoreB;
+  if (!isDraw) return "";
+  const bothSet = match.penA != null && match.penB != null;
+  const stillTied = bothSet && match.penA === match.penB;
+  return `<div class="penalty-shootout-box">
+    <div class="penalty-shootout-label">⚽ تعادل بالوقت الأصلي — ضربات الجزاء تحدد الفائز</div>
+    <div class="match-row">
+      <span class="match-name">${match.a ? coloredNameHtml(match.a.name) : "—"}</span>
+      ${scoreSelectHtml(match.penA, buildOnchange("penA"))}
+      <span class="vs">–</span>
+      ${scoreSelectHtml(match.penB, buildOnchange("penB"))}
+      <span class="match-name">${match.b ? coloredNameHtml(match.b.name) : "—"}</span>
+    </div>
+    ${stillTied ? `<div class="warn-note">ضربات الجزاء لازم يكون لها فائز — عدّل إذا تعادلت بالغلط</div>` : ""}
+  </div>`;
+}
+
 function semiPanelHtml(label, match, key) {
-  const tieWarn = (match.scoreA != null && match.scoreB != null && match.scoreA === match.scoreB)
-    ? `<div class="warn-note">تعادل — الأدوار الإقصائية لازم يكون فيها فائز، عدّل النتيجة</div>` : "";
+  const penHtml = penaltyShootoutHtml(match, (field) => `onchange="updateSemiField('${key}','${field}',this.value)"`);
   return `<div class="group-box">
     <h3 class="group-title">${label}</h3>
     <div class="match-row">
@@ -2652,22 +2696,26 @@ function semiPanelHtml(label, match, key) {
       ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
       <span class="match-name">${match.b ? coloredNameHtml(match.b.name) : "—"}</span>
     </div>
-    ${tieWarn}
+    ${penHtml}
   </div>`;
 }
 
 function knockoutStageHtml() {
   const cur = appState.current;
   const semis = cur.semis;
-  const semisComplete = semis.m1.scoreA != null && semis.m1.scoreB != null && semis.m2.scoreA != null && semis.m2.scoreB != null;
+  // "Complete" means each semi has an actual resolved winner — either a
+  // clear scoreline, or (on a draw) a decided penalty shootout. Just having
+  // scores entered isn't enough if they're still level with no shootout
+  // winner yet, otherwise the final would open with an undecided semi-finalist.
+  const semisComplete = !!resolveKnockoutWinner(semis.m1) && !!resolveKnockoutWinner(semis.m2);
   const final = cur.final;
-  const champion = final && final.scoreA != null && final.scoreB != null
-    ? (final.scoreA > final.scoreB ? final.a : final.scoreA < final.scoreB ? final.b : null) : null;
+  const champion = final ? resolveKnockoutWinner(final) : null;
 
   let finalHtml = "";
   if (!final) {
     finalHtml = `<button class="cta-btn" ${!semisComplete ? "disabled" : ""} onclick="goToFinal()">الانتقال للنهائي ←</button>`;
   } else {
+    const finalPenHtml = penaltyShootoutHtml(final, (field) => `onchange="updateFinalField('${field}',this.value)"`);
     finalHtml = `<div class="final-box">
       <h3 class="group-title">النهائي الكبير</h3>
       <div class="match-row">
@@ -2677,6 +2725,7 @@ function knockoutStageHtml() {
         ${scoreSelectHtml(final.scoreB, `onchange="updateFinalField('scoreB',this.value)"`)}
         <span class="match-name">${coloredNameHtml(final.b.name)}</span>
       </div>
+      ${finalPenHtml}
       ${champion ? `
         <div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${coloredNameHtml(champion.name)}</div>
         <button class="cta-btn" onclick="finishKnockout()">حفظ النتيجة النهائية وأرشفة البطولة ←</button>

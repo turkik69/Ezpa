@@ -945,6 +945,22 @@ function roundRobinRounds(players) {
     rest.unshift(rest.pop());
     arr.splice(0, arr.length, fixed, ...rest);
   }
+
+  // Whoever had the bye in a round should play FIRST in the very next
+  // round — not wherever the raw rotation happened to place their match —
+  // so they get back on the pitch as soon as possible instead of sitting
+  // through other matches again right after resting.
+  for (let r = 1; r < rounds.length; r++) {
+    const priorBye = rounds[r - 1].bye;
+    if (!priorBye) continue;
+    const matches = rounds[r].matches;
+    const idx = matches.findIndex(([a, b]) => a.id === priorBye.id || b.id === priorBye.id);
+    if (idx > 0) {
+      const [theirMatch] = matches.splice(idx, 1);
+      matches.unshift(theirMatch);
+    }
+  }
+
   return rounds;
 }
 
@@ -2184,6 +2200,29 @@ function doGoToKnockoutFromSingle() {
   sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
 }
 
+// Special case: with exactly 4 total participants, a full round-robin
+// already means everyone has played everyone else — the table is already a
+// reliable ranking, so reshuffling the same 4 people into a semi-final
+// round adds no real information. Go straight from 1st/2nd on the table
+// to the final; 3rd/4th are simply eliminated by their table position.
+function doGoToFinalDirectlyFromSingle() {
+  const cur = appState.current;
+  const log = [];
+  const finalTable = standingsFor(cur.players, cur.singleMatches, log);
+  const [p1, p2, p3, p4] = finalTable;
+  const promotedNames = [p1?.name, p2?.name, p3?.name, p4?.name].filter(Boolean);
+  updateCurrent({
+    stage: "knockout",
+    semis: null,
+    final: { a: p1, b: p2, scoreA: null, scoreB: null, penA: null, penB: null },
+    tiebreakLog: [...(cur.tiebreakLog || []), ...log],
+    fullStandings: finalTable,
+    promotedNames,
+    promotedTop4: promotedNames.slice(),
+  });
+  sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${p1?.name} ضد ${p2?.name}!`);
+}
+
 // Fun, varied "demolition" notifications — fires only when a match's FINAL
 // score becomes exactly 3-0 (either direction), by comparing the
 // prospective combined score against the old combined score. That means it
@@ -2269,10 +2308,15 @@ function doFinishKnockout() {
   if (!champion) return;
   const runnerUp = champion.id === final.a.id ? final.b : final.a;
   const semis = cur.semis;
-  const semifinalistsOut = [
-    (semis.m1.a?.id === champion.id || semis.m1.a?.id === runnerUp.id) ? semis.m1.b : semis.m1.a,
-    (semis.m2.a?.id === champion.id || semis.m2.a?.id === runnerUp.id) ? semis.m2.b : semis.m2.a,
-  ];
+  // With no semi-final stage (the exactly-4-players direct path), there's
+  // no "lost in the semis" concept — the two who didn't make the final were
+  // simply 3rd/4th on the table, so use that instead of a semis lookup.
+  const semifinalistsOut = semis
+    ? [
+        (semis.m1.a?.id === champion.id || semis.m1.a?.id === runnerUp.id) ? semis.m1.b : semis.m1.a,
+        (semis.m2.a?.id === champion.id || semis.m2.a?.id === runnerUp.id) ? semis.m2.b : semis.m2.a,
+      ]
+    : (cur.fullStandings || []).slice(2, 4);
   finishTournament(champion, runnerUp, semifinalistsOut, cur.fullStandings || []);
 }
 
@@ -2648,17 +2692,23 @@ function singleGroupStageHtml() {
   const cur = appState.current;
   const table = standingsFor(cur.players, cur.singleMatches, []);
   const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every(m => m.scoreA != null && m.scoreB != null);
-  const canGoKnockout = allPlayed && cur.players.length >= 4;
   const notEnoughForKnockout = allPlayed && cur.players.length < 4;
+  const exactlyFour = allPlayed && cur.players.length === 4;
+  const canGoKnockout = allPlayed && cur.players.length > 4;
+  let actionHtml;
+  if (notEnoughForKnockout) {
+    actionHtml = `<button class="cta-btn" onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button><div class="empty-note">عدد المشاركين أقل من 4، فما فيه إقصائي — البطل يتحدد من الترتيب العام مباشرة.</div>`;
+  } else if (exactlyFour) {
+    actionHtml = `<button class="cta-btn" onclick="goToFinalDirectlyFromSingle()">الانتقال للنهائي مباشرة ←</button><div class="empty-note">4 مشاركين بالضبط — الأول والثاني بالترتيب يتأهلون للنهائي مباشرة بدون نصف نهائي.</div>`;
+  } else {
+    actionHtml = `<button class="cta-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`;
+  }
   return `<div class="card theme-groups">
     <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🔀</span>مجموعة واحدة — الكل ضد الكل</div>
-    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث.</p>
+    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث (إلا لو كان العدد الكلي 4 بالضبط، فالأول والثاني يتأهلون للنهائي مباشرة).</p>
     ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
-    ${notEnoughForKnockout
-      ? `<button class="cta-btn" onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button><div class="empty-note">عدد المشاركين أقل من 4، فما فيه إقصائي — البطل يتحدد من الترتيب العام مباشرة.</div>`
-      : `<button class="cta-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`
-    }
+    ${actionHtml}
     ${!allPlayed ? `<div class="empty-note">أكمل جميع نتائج الجدول للمتابعة</div>` : ""}
   </div>`;
 }
@@ -2707,7 +2757,9 @@ function knockoutStageHtml() {
   // clear scoreline, or (on a draw) a decided penalty shootout. Just having
   // scores entered isn't enough if they're still level with no shootout
   // winner yet, otherwise the final would open with an undecided semi-finalist.
-  const semisComplete = !!resolveKnockoutWinner(semis.m1) && !!resolveKnockoutWinner(semis.m2);
+  // When there's no semi-final stage at all (the exactly-4-players direct
+  // path), the final is already seeded directly, so this is trivially true.
+  const semisComplete = semis ? (!!resolveKnockoutWinner(semis.m1) && !!resolveKnockoutWinner(semis.m2)) : true;
   const final = cur.final;
   const champion = final ? resolveKnockoutWinner(final) : null;
 
@@ -2733,13 +2785,17 @@ function knockoutStageHtml() {
     </div>`;
   }
 
+  const semisSectionHtml = semis
+    ? `<div class="two-col">
+      ${semiPanelHtml("نصف النهائي 1", semis.m1, "m1")}
+      ${semiPanelHtml("نصف النهائي 2", semis.m2, "m2")}
+    </div>`
+    : `<p class="hint">4 مشاركين بالضبط — الأول والثاني بالترتيب العام تأهلوا مباشرة للنهائي بدون نصف نهائي.</p>`;
+
   return `<div class="card theme-knockout">
     <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🥇</span>الأدوار الإقصائية</div>
-    <div class="two-col">
-      ${semiPanelHtml("نصف النهائي 1", semis.m1, "m1")}
-      ${semiPanelHtml("نصف النهائي 2", semis.m2, "m2")}
-    </div>
+    ${semisSectionHtml}
     ${finalHtml}
   </div>`;
 }
@@ -3330,6 +3386,7 @@ window.proceedToGroups = proceedToGroups; // continuation of the open wheel step
 window.updateMatchField = function(which, matchId, field, value) { requirePermission("admin", () => doUpdateMatchField(which, matchId, field, value)); };
 window.goToKnockout = function() { requirePermission("admin", doGoToKnockout); };
 window.goToKnockoutFromSingle = function() { requirePermission("admin", doGoToKnockoutFromSingle); };
+window.goToFinalDirectlyFromSingle = function() { requirePermission("admin", doGoToFinalDirectlyFromSingle); };
 window.updateSemiField = function(key, field, value) { requirePermission("admin", () => doUpdateSemiField(key, field, value)); };
 window.goToFinal = function() { requirePermission("admin", doGoToFinal); };
 window.updateFinalField = function(field, value) { requirePermission("admin", () => doUpdateFinalField(field, value)); };

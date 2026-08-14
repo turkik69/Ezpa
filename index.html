@@ -332,6 +332,8 @@
   }
   .group-box.box-a { border-color: rgba(90,190,140,0.4); box-shadow: 0 0 16px rgba(90,190,140,0.06); }
   .group-box.box-b { border-color: rgba(90,150,230,0.4); box-shadow: 0 0 16px rgba(90,150,230,0.06); }
+  .group-box.box-final { border-color: rgba(201,162,75,0.5); box-shadow: 0 0 20px rgba(201,162,75,0.1); margin-top:16px; }
+  .cup-loser-x { color:#D13F35; font-weight:900; }
   .group-title {
     font-size:13.5px; font-weight:800; color:#E4C06E; margin-bottom:12px;
     text-transform: uppercase; letter-spacing:0.4px;
@@ -1741,7 +1743,7 @@ function startNewTournament() {
     : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
 
   const singleBuild = groupMode === "one" ? buildRoundRobinMatches(shuffle(allPlayers)) : null;
-  const cupBuild = groupMode === "cup" ? buildCupFirstRound(allPlayers) : null;
+  const cupBuild = groupMode === "cup" ? buildFullCupBracket(allPlayers) : null;
 
   const base = {
     id: uid(), name, groupMode, isOfficial,
@@ -1758,7 +1760,7 @@ function startNewTournament() {
     singleMatches: singleBuild ? singleBuild.matches : [],
     singleRoundByes: singleBuild ? singleBuild.roundByes : {},
     singleTotalRounds: singleBuild ? singleBuild.totalRounds : 0,
-    cupRounds: cupBuild ? [cupBuild] : null,
+    cupBracket: cupBuild,
     semis: null, final: null, tiebreakLog: [],
   };
   wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1776,10 +1778,11 @@ function startNewTournament() {
     // Match count in round 1 varies a lot with player count, so the
     // "MAX 1 / MAX 2" channel gimmick (built for exactly 2 simultaneous
     // matches) doesn't map cleanly here — just announce the bracket is live.
-    const byeNote = cupBuild.byePlayers.length > 0
-      ? ` (${cupBuild.byePlayers.map(p => p.name).join("، ")} ياخذون باي مباشر بالجولة الأولى)`
+    const round1ByeNames = cupBuild.matches.filter(m => m.round === 1 && !m.b).map(m => m.a.name);
+    const byeNote = round1ByeNames.length > 0
+      ? ` (${round1ByeNames.join("، ")} ياخذون باي مباشر بالجولة الأولى)`
       : "";
-    sendPushNotification(`بدأت ${name} 🏆${officialTag}`, `🥊 كأس خروج المغلوب انطلق! الجولة الأولى جاهزة، ادخل التطبيق${byeNote}`);
+    sendPushNotification(`بدأت ${name} 🏆${officialTag}`, `🥊 كأس خروج المغلوب انطلق! الجدول الكامل جاهز، ادخل التطبيق${byeNote}`);
   } else {
     // Two groups drawing in parallel get the "two channels" broadcast flavor;
     // a single round-robin group is one unified pool, so it gets one channel.
@@ -2276,7 +2279,9 @@ function notifyIfFreshDemolition(match, field, newValue) {
 // draw can't stand in a knockout round, exactly like real football, where
 // it goes to penalties to produce a decider.
 function resolveKnockoutWinner(match) {
-  if (!match || match.scoreA == null || match.scoreB == null) return null;
+  if (!match || !match.a) return null;
+  if (!match.b) return match.a; // an empty bye slot — automatic advance, no match needed
+  if (match.scoreA == null || match.scoreB == null) return null;
   if (match.scoreA !== match.scoreB) {
     return match.scoreA > match.scoreB ? match.a : match.b;
   }
@@ -2287,91 +2292,110 @@ function resolveKnockoutWinner(match) {
   return match.penA > match.penB ? match.a : match.b;
 }
 
-// ---- Knockout-cup bracket (every match eliminates, from round 1) ----
+// ---- Knockout-cup bracket ----
+// A FIXED bracket tree, built once at tournament start (like a real cup
+// draw) rather than re-paired round by round: every match's slot in every
+// round is decided up front, and later-round matches simply reference
+// "whoever wins match X" until that match is actually played. This means
+// the whole bracket is visible from the very first screen — including
+// still-undecided later rounds — and each match is tagged with which half
+// of the draw it belongs to ("A"/"B"), so the two sides can be shown
+// separately and converge into a single final, matching how a real
+// tournament bracket poster reads.
 function nextPowerOf2(n) {
   let p = 1;
   while (p < n) p *= 2;
   return p;
 }
 
-// Builds round 1 of a cup bracket: shuffles the player list randomly, gives
-// an automatic bye to however many are needed to round the count up to the
-// next power of 2 (so every later round always halves cleanly with no more
-// byes ever needed again), and pairs everyone else into round-1 matches.
-function buildCupFirstRound(players) {
+function buildFullCupBracket(players) {
   const shuffled = shuffle(players);
   const bracketSize = nextPowerOf2(players.length);
-  const byeCount = bracketSize - players.length;
-  const byePlayers = shuffled.slice(0, byeCount);
-  const playing = shuffled.slice(byeCount);
+  const totalRounds = Math.log2(bracketSize);
+  const slots = [...shuffled];
+  while (slots.length < bracketSize) slots.push(null); // null = empty bye slot
+
   const matches = [];
-  for (let i = 0; i < playing.length; i += 2) {
-    matches.push({ id: uid(), a: playing[i], b: playing[i + 1], scoreA: null, scoreB: null, penA: null, penB: null });
+  let prevRoundIds = [];
+
+  // Round 1: real players (or a bye) directly in "a"/"b". Every match in
+  // the first half of round 1 is tagged side "A", the second half side "B"
+  // — and every later round inherits its feeder matches' side, so the two
+  // halves never mix until the final unites them.
+  const round1Count = bracketSize / 2;
+  for (let i = 0; i < round1Count; i++) {
+    const id = uid();
+    const side = i < round1Count / 2 ? "A" : "B";
+    matches.push({
+      id, round: 1, slot: i, side,
+      a: slots[i * 2], b: slots[i * 2 + 1],
+      scoreA: null, scoreB: null, penA: null, penB: null,
+    });
+    prevRoundIds.push(id);
   }
-  return { roundNumber: 1, matches, byePlayers };
+
+  // Round 2 onward: each match references the two previous-round matches
+  // that feed it, instead of storing players directly — the actual players
+  // get resolved dynamically (see getCupMatchPlayers) once those feeder
+  // matches are decided.
+  for (let r = 2; r <= totalRounds; r++) {
+    const thisRoundIds = [];
+    for (let i = 0; i < prevRoundIds.length / 2; i++) {
+      const id = uid();
+      const feederA = matches.find((m) => m.id === prevRoundIds[i * 2]);
+      const side = r === totalRounds ? null : feederA.side; // the final belongs to neither half — it's where they meet
+      matches.push({
+        id, round: r, slot: i, side,
+        aFromMatchId: prevRoundIds[i * 2], bFromMatchId: prevRoundIds[i * 2 + 1],
+        scoreA: null, scoreB: null, penA: null, penB: null,
+      });
+      thisRoundIds.push(id);
+    }
+    prevRoundIds = thisRoundIds;
+  }
+
+  return { bracketSize, totalRounds, matches };
 }
 
-// Once every match in a round has a resolved winner, pairs up whoever
-// advances — that round's bye player(s) plus its winners — into the next
-// round. Returns null once only one player is left, meaning the cup itself
-// is decided.
-function buildNextCupRound(previousRound) {
-  const winners = previousRound.matches.map((m) => resolveKnockoutWinner(m)).filter(Boolean);
-  const advancing = shuffle([...(previousRound.byePlayers || []), ...winners]);
-  if (advancing.length <= 1) return null;
-  const bracketSize = nextPowerOf2(advancing.length);
-  const byeCount = bracketSize - advancing.length; // always 0 past round 1 by construction; kept as a safety net
-  const byePlayers = advancing.slice(0, byeCount);
-  const playing = advancing.slice(byeCount);
-  const matches = [];
-  for (let i = 0; i < playing.length; i += 2) {
-    matches.push({ id: uid(), a: playing[i], b: playing[i + 1], scoreA: null, scoreB: null, penA: null, penB: null });
+// Resolves the actual two players for any bracket match, walking back
+// through "winner of an earlier match" references as needed. A side comes
+// back as null if the earlier match feeding it hasn't produced a winner yet.
+function getCupMatchPlayers(bracket, match) {
+  function resolveSide(m, sideKey, fromKey) {
+    if (m[fromKey] === undefined) return m[sideKey]; // round 1 — direct player or bye (null)
+    const fromMatch = bracket.matches.find((mm) => mm.id === m[fromKey]);
+    if (!fromMatch) return null;
+    const { a, b } = getCupMatchPlayers(bracket, fromMatch);
+    return resolveKnockoutWinner({ ...fromMatch, a, b });
   }
-  return { roundNumber: previousRound.roundNumber + 1, matches, byePlayers };
-}
-
-function cupRoundIsComplete(round) {
-  return round.matches.every((m) => !!resolveKnockoutWinner(m));
+  return {
+    a: resolveSide(match, "a", "aFromMatchId"),
+    b: resolveSide(match, "b", "bFromMatchId"),
+  };
 }
 
 function doUpdateCupField(matchId, field, value) {
   const cur = appState.current;
-  const rounds = cur.cupRounds;
-  const latest = rounds[rounds.length - 1];
-  const match = latest.matches.find((m) => m.id === matchId);
+  const bracket = cur.cupBracket;
+  const match = bracket.matches.find((m) => m.id === matchId);
+  const { a, b } = getCupMatchPlayers(bracket, match);
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
-  notifyIfFreshDemolition(match, field, parsed);
-  const updatedMatches = latest.matches.map((m) => (m.id === matchId ? { ...m, [field]: parsed } : m));
-  const updatedRounds = [...rounds.slice(0, -1), { ...latest, matches: updatedMatches }];
-  updateCurrent({ cupRounds: updatedRounds });
+  notifyIfFreshDemolition({ ...match, a, b }, field, parsed);
+  const updatedMatches = bracket.matches.map((m) => (m.id === matchId ? { ...m, [field]: parsed } : m));
+  updateCurrent({ cupBracket: { ...bracket, matches: updatedMatches } });
 }
 
-function doAdvanceCupRound() {
+function doFinishCupBracket() {
   const cur = appState.current;
-  const rounds = cur.cupRounds;
-  const latest = rounds[rounds.length - 1];
-  if (!cupRoundIsComplete(latest)) return;
-  const officialTag = cur.isOfficial ? "" : " (ودية)";
-  const nextRound = buildNextCupRound(latest);
-  if (!nextRound) {
-    // The latest round WAS the final (only one match, nobody left to pair
-    // it against) — resolve champion/runner-up straight from it. A cup
-    // bracket doesn't build a standings table the way round-robin modes do,
-    // so there's no "full standings" to hand off here.
-    const finalMatch = latest.matches[0];
-    const champion = resolveKnockoutWinner(finalMatch);
-    if (!champion) return;
-    const runnerUp = champion.id === finalMatch.a.id ? finalMatch.b : finalMatch.a;
-    finishTournament(champion, runnerUp, [], []);
-    return;
-  }
-  updateCurrent({ cupRounds: [...rounds, nextRound] });
-  const isFinal = nextRound.matches.length === 1 && (nextRound.byePlayers || []).length === 0;
-  if (isFinal) {
-    sendPushNotification(`🏆 النهائي!${officialTag}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${nextRound.matches[0].a.name} ضد ${nextRound.matches[0].b.name}!`);
-  } else {
-    sendPushNotification(`🥊 الجولة ${nextRound.roundNumber}!${officialTag}`, "ادخل التطبيق وشوف مين يقابل مين هالجولة!");
-  }
+  const bracket = cur.cupBracket;
+  const finalMatch = bracket.matches.find((m) => m.round === bracket.totalRounds);
+  const { a, b } = getCupMatchPlayers(bracket, finalMatch);
+  const champion = resolveKnockoutWinner({ ...finalMatch, a, b });
+  if (!champion) return;
+  const runnerUp = champion.id === a.id ? b : a;
+  // A cup bracket doesn't build a round-robin standings table, so there's
+  // no "full standings" list to hand off here — just champion and runner-up.
+  finishTournament(champion, runnerUp, [], []);
 }
 
 function doUpdateSemiField(key, field, value) {
@@ -2851,56 +2875,91 @@ function semiPanelHtml(label, match, key) {
   </div>`;
 }
 
+function cupMatchRowHtml(bracket, match) {
+  const { a, b } = getCupMatchPlayers(bracket, match);
+  const winner = resolveKnockoutWinner({ ...match, a, b });
+  const bothKnown = !!a && !!b;
+  const isByeSlot = a && !b && match.round === 1;
+
+  const nameHtml = (player, isLoser) => {
+    if (!player) return `<span class="match-name" style="opacity:0.4;">الفائز من مباراة سابقة</span>`;
+    const prefix = isLoser ? `<span class="cup-loser-x">✗</span> ` : "";
+    return `<span class="match-name">${prefix}${coloredNameHtml(player.name)}</span>`;
+  };
+  const aIsLoser = !!winner && !!a && winner.id !== a.id;
+  const bIsLoser = !!winner && !!b && winner.id !== b.id;
+
+  if (isByeSlot) {
+    return `<div class="match-row">
+      ${nameHtml(a, false)}
+      <span class="vs" style="flex:1; text-align:center; opacity:0.5; font-size:11px;">باي — يتأهل تلقائياً</span>
+    </div>`;
+  }
+
+  const placeholderScore = `<span class="score-select" style="opacity:0.3; display:inline-flex; align-items:center; justify-content:center;">-</span>`;
+  const scoreAHtml = bothKnown ? scoreSelectHtml(match.scoreA, `onchange="updateCupField('${match.id}','scoreA',this.value)"`) : placeholderScore;
+  const scoreBHtml = bothKnown ? scoreSelectHtml(match.scoreB, `onchange="updateCupField('${match.id}','scoreB',this.value)"`) : placeholderScore;
+  const penHtml = bothKnown ? penaltyShootoutHtml({ ...match, a, b }, (field) => `onchange="updateCupField('${match.id}','${field}',this.value)"`) : "";
+
+  return `<div class="match-row">
+    ${nameHtml(a, aIsLoser)}
+    ${scoreAHtml}
+    <span class="vs">–</span>
+    ${scoreBHtml}
+    ${nameHtml(b, bIsLoser)}
+  </div>${penHtml}`;
+}
+
+// One half of the bracket, all its rounds stacked (round 1 first, closest
+// to the two starting sides; later rounds progress downward toward where
+// this half's winner meets the other half in the final). The true final
+// (round === totalRounds) is always shown separately below, uniting both
+// halves, so it's excluded here even though every match still carries a
+// "side" tag internally.
+function cupBracketSideHtml(bracket, side, label) {
+  const sideMatches = bracket.matches.filter((m) => m.side === side && m.round < bracket.totalRounds);
+  if (sideMatches.length === 0) return "";
+  const maxRound = Math.max(...sideMatches.map((m) => m.round));
+  const roundsHtml = [];
+  for (let r = 1; r <= maxRound; r++) {
+    const roundMatches = sideMatches.filter((m) => m.round === r);
+    if (roundMatches.length === 0) continue;
+    roundsHtml.push(`<div class="round-block">
+      <div class="round-label">الجولة ${r}</div>
+      <div class="match-list">${roundMatches.map((m) => cupMatchRowHtml(bracket, m)).join("")}</div>
+    </div>`);
+  }
+  return `<div class="group-box">
+    <h3 class="group-title">${label}</h3>
+    ${roundsHtml.join("")}
+  </div>`;
+}
+
 function cupStageHtml() {
   const cur = appState.current;
-  const rounds = cur.cupRounds;
-  const latest = rounds[rounds.length - 1];
-  const roundComplete = cupRoundIsComplete(latest);
-  const isFinalRound = latest.matches.length === 1 && (latest.byePlayers || []).length === 0;
-  const finalWinner = isFinalRound && roundComplete ? resolveKnockoutWinner(latest.matches[0]) : null;
+  const bracket = cur.cupBracket;
+  const finalMatch = bracket.matches.find((m) => m.round === bracket.totalRounds);
+  const { a: finalA, b: finalB } = getCupMatchPlayers(bracket, finalMatch);
+  const finalWinner = resolveKnockoutWinner({ ...finalMatch, a: finalA, b: finalB });
 
-  const roundsHtml = rounds.map((round, idx) => {
-    const isLatest = idx === rounds.length - 1;
-    const roundIsFinalLabel = round.matches.length === 1 && (round.byePlayers || []).length === 0;
-    const matchesHtml = round.matches.map((m) => {
-      const winner = resolveKnockoutWinner(m);
-      const penHtml = isLatest
-        ? penaltyShootoutHtml(m, (field) => `onchange="updateCupField('${m.id}','${field}',this.value)"`)
-        : "";
-      const scoreAHtml = isLatest
-        ? scoreSelectHtml(m.scoreA, `onchange="updateCupField('${m.id}','scoreA',this.value)"`)
-        : `<span style="font-weight:800; padding:0 6px;">${m.scoreA ?? "-"}</span>`;
-      const scoreBHtml = isLatest
-        ? scoreSelectHtml(m.scoreB, `onchange="updateCupField('${m.id}','scoreB',this.value)"`)
-        : `<span style="font-weight:800; padding:0 6px;">${m.scoreB ?? "-"}</span>`;
-      return `<div class="match-row">
-        <span class="match-name">${coloredNameHtml(m.a.name)}</span>
-        ${scoreAHtml}
-        <span class="vs">–</span>
-        ${scoreBHtml}
-        <span class="match-name">${coloredNameHtml(m.b.name)}</span>
-      </div>${penHtml}
-      ${winner ? `<div class="hint" style="text-align:center; margin-top:-4px; margin-bottom:8px;">✓ تأهل: ${coloredNameHtml(winner.name)}</div>` : ""}`;
-    }).join("");
-    const byeHtml = (round.byePlayers || []).length > 0
-      ? `<div class="bye-note">💤 باي مباشر للجولة القادمة: ${round.byePlayers.map((p) => coloredNameHtml(p.name)).join("، ")}</div>`
-      : "";
-    return `<div class="round-block">
-      <div class="round-label">${roundIsFinalLabel ? "النهائي" : "الجولة " + round.roundNumber}</div>
-      <div class="match-list">${matchesHtml}</div>
-      ${byeHtml}
-    </div>`;
-  }).join("");
+  const sideAHtml = cupBracketSideHtml(bracket, "A", "الجهة الأولى 🟢");
+  const sideBHtml = cupBracketSideHtml(bracket, "B", "الجهة الثانية 🔵");
+  const twoColHtml = (sideAHtml || sideBHtml) ? `<div class="two-col">${sideAHtml}${sideBHtml}</div>` : "";
+  const finalBoxHtml = `<div class="group-box box-final">
+    <h3 class="group-title">🏆 النهائي</h3>
+    <div class="match-list">${cupMatchRowHtml(bracket, finalMatch)}</div>
+  </div>`;
 
   return `<div class="card theme-knockout">
     <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🥊</span>كأس خروج المغلوب</div>
-    <p class="hint">كل مباراة إقصائية من أول جولة — خسرت طلعت! لو تعادلت مباراة، تُحسم بضربات الجزاء.</p>
-    ${roundsHtml}
-    ${finalWinner ? `<div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${coloredNameHtml(finalWinner.name)}</div>` : ""}
-    <button class="cta-btn" ${!roundComplete ? "disabled" : ""} onclick="advanceCupRound()">
-      ${isFinalRound ? "حفظ النتيجة النهائية وأرشفة البطولة ←" : "الانتقال للجولة التالية ←"}
-    </button>
+    <p class="hint">الجدول كامل من البداية على جانبين يتقاربان بالنهائي. الفائز يتقدم لمكانه بالجولة التالية تلقائياً، والخاسر يبين بعلامة ✗. أي تعادل يُحسم بضربات الجزاء.</p>
+    ${twoColHtml}
+    ${finalBoxHtml}
+    ${finalWinner ? `
+      <div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${coloredNameHtml(finalWinner.name)}</div>
+      <button class="cta-btn" onclick="finishCupBracket()">حفظ النتيجة النهائية وأرشفة البطولة ←</button>
+    ` : ""}
   </div>`;
 }
 
@@ -3543,7 +3602,7 @@ window.goToKnockout = function() { requirePermission("admin", doGoToKnockout); }
 window.goToKnockoutFromSingle = function() { requirePermission("admin", doGoToKnockoutFromSingle); };
 window.goToFinalDirectlyFromSingle = function() { requirePermission("admin", doGoToFinalDirectlyFromSingle); };
 window.updateCupField = function(matchId, field, value) { requirePermission("admin", () => doUpdateCupField(matchId, field, value)); };
-window.advanceCupRound = function() { requirePermission("admin", doAdvanceCupRound); };
+window.finishCupBracket = function() { requirePermission("admin", doFinishCupBracket); };
 window.updateSemiField = function(key, field, value) { requirePermission("admin", () => doUpdateSemiField(key, field, value)); };
 window.goToFinal = function() { requirePermission("admin", doGoToFinal); };
 window.updateFinalField = function(field, value) { requirePermission("admin", () => doUpdateFinalField(field, value)); };

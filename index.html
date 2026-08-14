@@ -1743,7 +1743,11 @@ function startNewTournament() {
     : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
 
   const singleBuild = groupMode === "one" ? buildRoundRobinMatches(shuffle(allPlayers)) : null;
-  const cupBuild = groupMode === "cup" ? buildFullCupBracket(allPlayers) : null;
+  // Small brackets (2-4 players) can have round 1 already BE the semi-final
+  // or even the final, so the family-derby check needs to run on the
+  // freshly-built bracket immediately — not just later when scores get
+  // entered — to catch a known brothers matchup right from the start.
+  const cupBuild = groupMode === "cup" ? checkCupBrothersClashesAndMark(buildFullCupBracket(allPlayers)) : null;
 
   const base = {
     id: uid(), name, groupMode, isOfficial,
@@ -2190,6 +2194,8 @@ function doGoToKnockout() {
     promotedGroupB: [b1?.name, b2?.name].filter(Boolean),
   });
   sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${a1?.name} ضد ${b2?.name}\n📺 MAX 2: ${b1?.name} ضد ${a2?.name}`);
+  notifyIfBrothersClash(a1?.name, b2?.name, "نصف النهائي");
+  notifyIfBrothersClash(b1?.name, a2?.name, "نصف النهائي");
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2213,6 +2219,8 @@ function doGoToKnockoutFromSingle() {
     promotedTop4: promotedNames.slice(),
   });
   sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
+  notifyIfBrothersClash(p1?.name, p4?.name, "نصف النهائي");
+  notifyIfBrothersClash(p2?.name, p3?.name, "نصف النهائي");
 }
 
 // Special case: with exactly 4 total participants, a full round-robin
@@ -2236,6 +2244,7 @@ function doGoToFinalDirectlyFromSingle() {
     promotedTop4: promotedNames.slice(),
   });
   sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${p1?.name} ضد ${p2?.name}!`);
+  notifyIfBrothersClash(p1?.name, p2?.name, "النهائي");
 }
 
 // Fun, varied "demolition" notifications — fires only when a match's FINAL
@@ -2272,6 +2281,58 @@ function notifyIfFreshDemolition(match, field, newValue) {
 
   const phrase = DEMOLITION_PHRASES[Math.floor(Math.random() * DEMOLITION_PHRASES.length)];
   sendPushNotification("🔥 تدمير!", phrase(winner.name, loser.name));
+}
+
+// ---- "Family derby" notifications ----
+// When two players who are actual brothers end up facing each other in a
+// semi-final or the final, that's a genuinely special, drama-filled moment
+// worth its own extra notification — sent right after the normal
+// "who's playing whom" announcement, with a randomly-picked phrase so it
+// doesn't read the same every time it happens.
+const BROTHER_GROUPS = [
+  ["تركي", "فهد", "ابراهيم", "نصر"],
+  ["عفان", "غسان", "احمد"],
+];
+
+function areBrothers(nameA, nameB) {
+  return BROTHER_GROUPS.some((group) => group.includes(nameA) && group.includes(nameB));
+}
+
+const BROTHERS_CLASH_PHRASES = [
+  (n1, n2) => `😱 لقاء خالص فيه التشويق! الجمهور محتار يشجع مين — يجمع الأخوين ${n1} و${n2}`,
+  (n1, n2) => `⚔️ ديربي العائلة! ${n1} يقابل ${n2} — مين بياخذ فخر البيت؟`,
+  (n1, n2) => `🔥 مواجهة الإخوان ${n1} و${n2}! الجمهور منقسم بين الأخوين`,
+  (n1, n2) => `👀 ${n1} و${n2}... إخوان بالدم، خصوم باللعب! مين بيكسب؟`,
+  (n1, n2) => `🏠 معركة العائلة! ${n1} ضد ${n2} — الغداء بكرة بيكون مشحون 😂`,
+  (n1, n2) => `مواجهة مرتقبة بين الأخوين ${n1} و${n2}! 🍿 حضروا الفشار`,
+];
+
+// Fires the extra "family derby" notification if (and only if) the two
+// names given are actual brothers — used right after the regular
+// participants-announced notification for a semi-final/final match.
+function notifyIfBrothersClash(nameA, nameB, stageLabel) {
+  if (!nameA || !nameB || !areBrothers(nameA, nameB)) return;
+  const phrase = BROTHERS_CLASH_PHRASES[Math.floor(Math.random() * BROTHERS_CLASH_PHRASES.length)];
+  sendPushNotification(`👨‍👦‍👦 ديربي العائلة! (${stageLabel})`, phrase(nameA, nameB));
+}
+
+// Cup-bracket specific: semi-final/final matchups only become known
+// progressively as earlier rounds resolve (see getCupMatchPlayers), so this
+// checks the semi-final and final rounds every time a cup score changes,
+// firing the notification the instant a match's two sides are BOTH newly
+// known for the first time. Each checked match gets tagged
+// `brothersNotified` so it's never re-fired on a later, unrelated update.
+function checkCupBrothersClashesAndMark(bracket) {
+  const relevantRounds = [bracket.totalRounds - 1, bracket.totalRounds].filter((r) => r >= 1);
+  const updatedMatches = bracket.matches.map((m) => {
+    if (!relevantRounds.includes(m.round) || m.brothersNotified) return m;
+    const { a, b } = getCupMatchPlayers(bracket, m);
+    if (!a || !b) return m;
+    const stageLabel = m.round === bracket.totalRounds ? "النهائي" : "نصف النهائي";
+    notifyIfBrothersClash(a.name, b.name, stageLabel);
+    return { ...m, brothersNotified: true };
+  });
+  return { ...bracket, matches: updatedMatches };
 }
 
 // Resolves the winner of a knockout match (semi-final or final), falling
@@ -2382,7 +2443,8 @@ function doUpdateCupField(matchId, field, value) {
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
   notifyIfFreshDemolition({ ...match, a, b }, field, parsed);
   const updatedMatches = bracket.matches.map((m) => (m.id === matchId ? { ...m, [field]: parsed } : m));
-  updateCurrent({ cupBracket: { ...bracket, matches: updatedMatches } });
+  const finalBracket = checkCupBrothersClashesAndMark({ ...bracket, matches: updatedMatches });
+  updateCurrent({ cupBracket: finalBracket });
 }
 
 function doFinishCupBracket() {
@@ -2415,6 +2477,7 @@ function doGoToFinal() {
   if (!w1 || !w2) return;
   updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null, penA: null, penB: null } });
   sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
+  notifyIfBrothersClash(w1.name, w2.name, "النهائي");
 }
 
 function doUpdateFinalField(field, value) {

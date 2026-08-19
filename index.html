@@ -2629,7 +2629,7 @@ function computeHistoricalStats(archive) {
     .sort((a,b) => b.missedPromotions - a.missedPromotions || b.knockoutEligibleAppearances - a.knockoutEligibleAppearances)
     .slice(0, 5);
   return {
-    mostTitles: topBy("titles"),
+    mostTitles: topBy("titles", 10),
     mostGoalsScored: topBy("goalsScored"),
     mostGoalsConceded: topBy("goalsConceded"),
     mostRunnerUps: topBy("runnerUps"),

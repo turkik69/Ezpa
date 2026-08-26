@@ -703,6 +703,119 @@ const PUSH_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-push";
 const PUSH_SUB_URL = SUPABASE_URL + "/rest/v1/ezba_push_subscriptions";
 const STORAGE_UPLOAD_URL = SUPABASE_URL + "/storage/v1/object/ezba-message-images/";
 const STORAGE_PUBLIC_URL = SUPABASE_URL + "/storage/v1/object/public/ezba-message-images/";
+const BACKUPS_URL = SUPABASE_URL + "/rest/v1/ezba_backups";
+
+// ============ Backups ============
+async function fetchBackups() {
+  const res = await fetch(BACKUPS_URL + "?select=id,created_at,trigger_reason&order=created_at.desc&limit=20", {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+  });
+  if (!res.ok) throw new Error("fetch backups failed: " + res.status);
+  return await res.json();
+}
+
+async function insertBackup(backup) {
+  const res = await fetch(BACKUPS_URL, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json", Prefer: "return=minimal",
+    },
+    body: JSON.stringify(backup),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error("save backup failed: " + t); }
+}
+
+async function fetchBackupSnapshot(backupId) {
+  const res = await fetch(BACKUPS_URL + "?id=eq." + encodeURIComponent(backupId) + "&select=snapshot", {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+  });
+  if (!res.ok) throw new Error("fetch backup snapshot failed: " + res.status);
+  const rows = await res.json();
+  return rows[0] ? rows[0].snapshot : null;
+}
+
+// Gathers everything worth protecting — the shared tournament state, the
+// member roster (roles/PINs/colors/nicknames), and predictions — into one
+// snapshot object. Used both for the downloadable file export and for the
+// automatic in-database checkpoints.
+function buildBackupSnapshot() {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    leagueState: appState,
+    members: members,
+    predictions: predictions,
+  };
+}
+
+// Saves a snapshot straight to the database — the automatic safety net that
+// doesn't rely on anyone remembering to export a file. Never lets a backup
+// failure interrupt whatever real action triggered it (e.g. archiving a
+// finished tournament), matching the same philosophy as push notifications.
+async function saveAutoBackup(reason) {
+  try {
+    await insertBackup({ id: uid(), trigger_reason: reason, snapshot: buildBackupSnapshot() });
+  } catch (e) {
+    console.error("auto backup failed", e);
+  }
+}
+
+// Restoring is destructive by nature (it replaces current data with the
+// snapshot's), so this always takes a fresh "right before restoring"
+// snapshot first — an undo-of-the-undo safety net in case the wrong backup
+// gets picked by mistake.
+async function restoreFromSnapshot(snapshot) {
+  await saveAutoBackup("pre_restore_safety");
+
+  // Members: replace the whole roster to exactly match the snapshot,
+  // rather than trying to reconcile individual differences.
+  const currentMembers = await fetchMembers();
+  if (currentMembers.length > 0) {
+    const idList = currentMembers.map((m) => `"${m.id}"`).join(",");
+    await fetch(MEMBERS_URL + `?id=in.(${idList})`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+    });
+  }
+  if (snapshot.members && snapshot.members.length > 0) {
+    await fetch(MEMBERS_URL, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify(snapshot.members),
+    });
+  }
+
+  // Predictions: same full-replace approach.
+  const currentPreds = await fetchPredictions();
+  if (currentPreds.length > 0) {
+    const idList = currentPreds.map((p) => `"${p.id}"`).join(",");
+    await fetch(PREDICTIONS_URL + `?id=in.(${idList})`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+    });
+  }
+  if (snapshot.predictions && snapshot.predictions.length > 0) {
+    await fetch(PREDICTIONS_URL, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify(snapshot.predictions),
+    });
+  }
+
+  // League state is a single row — just overwrite its data column directly.
+  await saveState(snapshot.leagueState);
+
+  appState = snapshot.leagueState;
+  members = snapshot.members || [];
+  predictions = snapshot.predictions || [];
+}
 
 // Uploads an image file selected on the device directly to Supabase Storage
 // and returns its public URL — this is what lets Turki attach a photo he
@@ -1125,6 +1238,7 @@ let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_
 // Draft state for the prediction form (mirrors the addMemberDraft pattern —
 // tracked here so a background poll re-render never wipes in-progress picks).
 let predictionDraft = null; // null | { groupA:[], groupB:[], top4:[], finalists:[], champion:null }
+let backupsListState = null; // null (not loaded yet) | { loading, backups:[], error }
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
 let wheelUi = { rotation: 0, spinning: false, lastWinner: null };
@@ -1269,6 +1383,80 @@ window.openMessageModal = function() {
   if (!requirePermission("turki")) return;
   messageModal = { title: "", body: "", imageUrl: "", uploading: false, sending: false, success: "", error: "" };
   render();
+};
+
+// ---- Backups ----
+window.exportBackupFile = function() {
+  if (!requirePermission("admin")) return;
+  const snapshot = buildBackupSnapshot();
+  const json = JSON.stringify(snapshot, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `ezba-backup-${dateStr}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if (profileModal) { profileModal.success = "تم تنزيل ملف النسخة الاحتياطية ✓"; render(); }
+};
+
+window.handleBackupFileImport = async function(fileInput) {
+  if (!requirePermission("admin")) return;
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const snapshot = JSON.parse(text);
+    if (!snapshot || !snapshot.leagueState || !snapshot.members) {
+      alert("هذا الملف مو نسخة احتياطية صحيحة لهذا التطبيق.");
+      fileInput.value = "";
+      return;
+    }
+    if (!confirm("⚠️ متأكد؟ هذا بيستبدل كل البيانات الحالية (الأعضاء، الأرشيف، البطولة الجارية) بمحتوى الملف. يُحفظ لقطة من الوضع الحالي تلقائياً قبل الاسترجاع تحسباً.")) {
+      fileInput.value = "";
+      return;
+    }
+    await restoreFromSnapshot(snapshot);
+    render();
+    syncBadge.textContent = "تم الاسترجاع من الملف ✓";
+  } catch (e) {
+    console.error(e);
+    alert("تعذر قراءة الملف أو استرجاع البيانات. تأكد إنه ملف نسخة احتياطية صحيح.");
+  }
+  fileInput.value = "";
+};
+
+window.loadBackupsList = async function() {
+  if (!requirePermission("admin")) return;
+  backupsListState = { loading: true, backups: [], error: "" };
+  render();
+  try {
+    const list = await fetchBackups();
+    backupsListState = { loading: false, backups: list, error: "" };
+  } catch (e) {
+    console.error(e);
+    backupsListState = { loading: false, backups: [], error: "تعذر جلب النسخ الاحتياطية، حاول مرة ثانية." };
+  }
+  render();
+};
+
+window.restoreFromAutoBackup = async function(backupId, createdAt) {
+  if (!requirePermission("admin")) return;
+  const dateLabel = new Date(createdAt).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (!confirm(`⚠️ متأكد تبي تسترجع النسخة من ${dateLabel}؟ هذا بيستبدل كل البيانات الحالية. يُحفظ لقطة من الوضع الحالي تلقائياً قبل الاسترجاع تحسباً.`)) return;
+  try {
+    const snapshot = await fetchBackupSnapshot(backupId);
+    if (!snapshot) { alert("تعذر جلب هذي النسخة."); return; }
+    await restoreFromSnapshot(snapshot);
+    render();
+    syncBadge.textContent = "تم الاسترجاع ✓";
+  } catch (e) {
+    console.error(e);
+    alert("تعذر الاسترجاع، حاول مرة ثانية.");
+  }
 };
 
 window.closeMessageModal = function() {
@@ -1844,6 +2032,10 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
     lastRunnerUp: cur.isOfficial ? (runnerUp ? { id: runnerUp.id, name: runnerUp.name } : null) : appState.lastRunnerUp,
   });
   syncBadge.textContent = "تمت أرشفة البطولة ✓ — جاهزين لبطولة ثانية بنفس اليوم لو حبيتوا";
+  // A completed tournament is a meaningful checkpoint — snapshot everything
+  // right after it archives, so there's always a recent automatic backup
+  // without anyone needing to remember to make one.
+  saveAutoBackup("auto_tournament_complete");
   if (champion) {
     const firstTitleHint = isFirstTitle ? " 🎉 (أول لقب له!)" : "";
     const officialTag = cur.isOfficial ? "" : " (ودية)";
@@ -3348,6 +3540,23 @@ function loginModalHtml() {
   </div>`;
 }
 
+function backupsListSectionHtml() {
+  const state = backupsListState;
+  if (state.loading) return `<p class="hint" style="margin-top:8px;">جارِ التحميل...</p>`;
+  if (state.error) return `<div class="warn-note">${escapeHtml(state.error)}</div>`;
+  if (state.backups.length === 0) return `<div class="empty-note">ما فيه نسخ محفوظة بعد.</div>`;
+  const reasonLabels = { manual: "يدوية", auto_tournament_complete: "تلقائية (بعد بطولة)", pre_restore_safety: "تلقائية (قبل استرجاع)" };
+  const rows = state.backups.map((b) => {
+    const dateLabel = new Date(b.created_at).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return `<div class="prediction-row">
+      <div class="prediction-row-name">${escapeHtml(dateLabel)}</div>
+      <div class="prediction-row-picks">${reasonLabels[b.trigger_reason] || b.trigger_reason}</div>
+      <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.8;" onclick="restoreFromAutoBackup('${b.id}','${b.created_at}')">↩️ استرجاع هذي النسخة</button>
+    </div>`;
+  }).join("");
+  return `<div style="margin-top:10px;">${rows}</div>`;
+}
+
 function profilePageHtml() {
   if (!profileModal) return "";
   const user = getCurrentUser();
@@ -3374,12 +3583,24 @@ function profilePageHtml() {
     <div class="section-icon-title"><span class="icon">👤</span>${coloredNameHtml(user.name)}</div>
     <p class="hint">${roleLabel}</p>
 
-    ${isTurki() ? `
+    ${isAdmin() ? `
     <div class="archive-divider"></div>
     <div class="section-icon-title"><span class="icon">🛠️</span>لوحة المشرف</div>
+    ${isTurki() ? `
     <div class="add-member-label">📢 إرسال إشعار لكل الأعضاء</div>
     <p class="hint">هذي الميزة خاصة فيك بس — اكتب رسالة وتوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات.</p>
     <button class="cta-btn" onclick="openMessageModal()">📢 كتابة إشعار جديد</button>
+    <div class="archive-divider" style="margin:14px 0;"></div>
+    ` : ""}
+    <div class="add-member-label">💾 النسخ الاحتياطي</div>
+    <p class="hint">احفظ نسخة من كل بيانات الدوري (الأعضاء، الأرشيف، البطولة الجارية) بملف على جهازك، أو استرجع نسخة سابقة لو صار خلل أو فقدان بيانات. نسخة تلقائية تُحفظ أيضاً بعد كل بطولة تكتمل بدون أي تدخل منك.</p>
+    <button class="cta-btn" onclick="exportBackupFile()">📥 تصدير نسخة احتياطية الآن</button>
+    <label class="cta-btn" style="display:block; text-align:center; cursor:pointer; margin-top:8px;">
+      📤 استرجاع من ملف
+      <input type="file" accept="application/json" style="display:none;" onchange="handleBackupFileImport(this)">
+    </label>
+    <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.8;" onclick="loadBackupsList()">عرض النسخ التلقائية المحفوظة</button>
+    ${backupsListState ? backupsListSectionHtml() : ""}
     ` : ""}
 
     <div class="archive-divider"></div>

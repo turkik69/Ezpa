@@ -549,20 +549,20 @@
      padding and internal spacing/fonts just enough for both columns to
      still fit comfortably without horizontal scrolling. */
   @media (max-width: 480px) {
-    body { padding-left:12px; padding-right:12px; }
-    .card { padding-left:12px; padding-right:12px; }
-    .two-col { gap:8px; }
-    .group-box { padding:8px; }
+    body { padding-left:8px; padding-right:8px; }
+    .card { padding-left:8px; padding-right:8px; }
+    .two-col { gap:5px; }
+    .group-box { padding:5px; }
     .group-title { font-size:11.5px; margin-bottom:8px; padding-bottom:6px; }
     .round-label { font-size:9.5px; margin-bottom:6px; }
     .match-list { gap:5px; margin-bottom:10px; }
-    .match-row { gap:3px; padding:7px 5px; font-size:10.5px; }
+    .match-row { gap:2px; padding:7px 3px; font-size:10.5px; }
     .match-name { font-size:10.5px; }
     .score-select {
-      width:30px; padding:5px 1px; font-size:11.5px;
-      background-position: left 2px center; background-size:8px 5px;
+      width:26px; padding:5px 0px; font-size:11px;
+      background-position: left 1px center; background-size:7px 4px;
     }
-    .vs { font-size:10px; }
+    .vs { font-size:9px; }
     table.score-table { font-size:8.5px; }
     table.score-table th, table.score-table td { padding:5px 1px; }
     table.score-table th { font-size:7.5px; letter-spacing:0; }
@@ -1218,10 +1218,10 @@ function findMemberByName(name) {
 // Renders a player's name wrapped in their personal color, with their
 // nickname (if set) shown in parentheses right after it. Falls back to the
 // plain default-colored name if the player has no record or no color set.
-function coloredNameHtml(name, extraClass) {
+function coloredNameHtml(name, extraClass, hideNickname) {
   const m = findMemberByName(name);
   const color = (m && m.color) || "#F2EEE3";
-  const nickname = m && m.nickname ? m.nickname.trim() : "";
+  const nickname = !hideNickname && m && m.nickname ? m.nickname.trim() : "";
   const nicknameHtml = nickname ? ` <span class="player-nickname">"${escapeHtml(nickname)}"</span>` : "";
   return `<span class="${extraClass || ''}" style="color:${escapeHtml(color)}">${escapeHtml(name)}</span>${nicknameHtml}`;
 }
@@ -3045,11 +3045,11 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
     const roundMatches = byRound[roundNum];
     const matchRows = roundMatches.map(m => `
       <div class="match-row">
-        <span class="match-name">${coloredNameHtml(m.a.name)}</span>
+        <span class="match-name">${coloredNameHtml(m.a.name, "", true)}</span>
         ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
         <span class="vs">–</span>
         ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
-        <span class="match-name">${coloredNameHtml(m.b.name)}</span>
+        <span class="match-name">${coloredNameHtml(m.b.name, "", true)}</span>
       </div>`).join("");
 
     const byePlayer = roundByes && roundByes[roundNum];
@@ -3129,11 +3129,11 @@ function penaltyShootoutHtml(match, buildOnchange) {
   return `<div class="penalty-shootout-box">
     <div class="penalty-shootout-label">⚽ تعادل بالوقت الأصلي — ضربات الجزاء تحدد الفائز</div>
     <div class="match-row">
-      <span class="match-name">${match.a ? coloredNameHtml(match.a.name) : "—"}</span>
+      <span class="match-name">${match.a ? coloredNameHtml(match.a.name, "", true) : "—"}</span>
       ${scoreSelectHtml(match.penA, buildOnchange("penA"))}
       <span class="vs">–</span>
       ${scoreSelectHtml(match.penB, buildOnchange("penB"))}
-      <span class="match-name">${match.b ? coloredNameHtml(match.b.name) : "—"}</span>
+      <span class="match-name">${match.b ? coloredNameHtml(match.b.name, "", true) : "—"}</span>
     </div>
     ${stillTied ? `<div class="warn-note">ضربات الجزاء لازم يكون لها فائز — عدّل إذا تعادلت بالغلط</div>` : ""}
   </div>`;
@@ -3144,11 +3144,11 @@ function semiPanelHtml(label, match, key) {
   return `<div class="group-box">
     <h3 class="group-title">${label}</h3>
     <div class="match-row">
-      <span class="match-name">${match.a ? coloredNameHtml(match.a.name) : "—"}</span>
+      <span class="match-name">${match.a ? coloredNameHtml(match.a.name, "", true) : "—"}</span>
       ${scoreSelectHtml(match.scoreA, `onchange="updateSemiField('${key}','scoreA',this.value)"`)}
       <span class="vs">–</span>
       ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
-      <span class="match-name">${match.b ? coloredNameHtml(match.b.name) : "—"}</span>
+      <span class="match-name">${match.b ? coloredNameHtml(match.b.name, "", true) : "—"}</span>
     </div>
     ${penHtml}
   </div>`;
@@ -3163,7 +3163,7 @@ function cupMatchRowHtml(bracket, match) {
   const nameHtml = (player, isLoser) => {
     if (!player) return `<span class="match-name" style="opacity:0.4;">الفائز من مباراة سابقة</span>`;
     const prefix = isLoser ? `<span class="cup-loser-x">✗</span> ` : "";
-    return `<span class="match-name">${prefix}${coloredNameHtml(player.name)}</span>`;
+    return `<span class="match-name">${prefix}${coloredNameHtml(player.name, "", true)}</span>`;
   };
   const aIsLoser = !!winner && !!a && winner.id !== a.id;
   const bIsLoser = !!winner && !!b && winner.id !== b.id;
@@ -3263,11 +3263,11 @@ function knockoutStageHtml() {
     finalHtml = `<div class="final-box">
       <h3 class="group-title">النهائي الكبير</h3>
       <div class="match-row">
-        <span class="match-name">${coloredNameHtml(final.a.name)}</span>
+        <span class="match-name">${coloredNameHtml(final.a.name, "", true)}</span>
         ${scoreSelectHtml(final.scoreA, `onchange="updateFinalField('scoreA',this.value)"`)}
         <span class="vs">–</span>
         ${scoreSelectHtml(final.scoreB, `onchange="updateFinalField('scoreB',this.value)"`)}
-        <span class="match-name">${coloredNameHtml(final.b.name)}</span>
+        <span class="match-name">${coloredNameHtml(final.b.name, "", true)}</span>
       </div>
       ${finalPenHtml}
       ${champion ? `

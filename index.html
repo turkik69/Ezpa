@@ -2039,7 +2039,14 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
   if (champion) {
     const firstTitleHint = isFirstTitle ? " 🎉 (أول لقب له!)" : "";
     const officialTag = cur.isOfficial ? "" : " (ودية)";
-    sendPushNotification(`👑 بطل ${cur.name}${officialTag}`, `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`);
+    // A running joke reserved specifically for عفان — same playful energy
+    // as the demolition/family-derby notifications elsewhere, just a fixed
+    // one-off line rather than a rotating phrase pool since only one exact
+    // wording was asked for here.
+    const bodyText = champion.name === "عفان"
+      ? "البطل عفان للاسف والله ماتستاهلها ياجبان"
+      : `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`;
+    sendPushNotification(`👑 بطل ${cur.name}${officialTag}`, bodyText);
     celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
     render();
     playChampionFanfare();

@@ -198,6 +198,13 @@
 
   .layout { max-width:1440px; margin:0 auto; display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
   @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  /* Same CSS Grid quirk as .group-box below: a grid item won't shrink below
+     its content's natural minimum width unless told to. Without this, wide
+     content anywhere on the page (a match row, a standings table) could
+     force the whole main content area — and therefore the page — wider
+     than the phone screen instead of properly wrapping/truncating inside
+     the space actually available. */
+  main { min-width:0; }
 
   .card {
     background: linear-gradient(180deg, rgba(242,238,227,0.045), rgba(242,238,227,0.02));
@@ -329,6 +336,13 @@
   .group-box {
     background: rgba(242,238,227,0.03); border:1.5px solid rgba(242,238,227,0.12);
     border-radius:12px; padding:18px;
+    /* Grid items don't shrink below their content's natural width by
+       default (an easy-to-miss CSS Grid quirk) — without this, a match row
+       with a long name + two dropdowns could force this whole box, and
+       therefore the two-column grid itself, wider than the phone screen,
+       pushing everything into horizontal overflow instead of wrapping/
+       truncating within the space actually available. */
+    min-width:0;
   }
   .group-box.box-a { border-color: rgba(90,190,140,0.4); box-shadow: 0 0 16px rgba(90,190,140,0.06); }
   .group-box.box-b { border-color: rgba(90,150,230,0.4); box-shadow: 0 0 16px rgba(90,150,230,0.06); }

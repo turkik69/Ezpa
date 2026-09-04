@@ -1309,6 +1309,16 @@ function isOfficialPlayDay() {
   return day === 4 || day === 5;
 }
 
+// A few members get their own running-joke line the instant they confirm
+// attendance for an official (Thursday/Friday) play day — used in place of
+// the generic "أكّد حضوره" text, exact wording as given.
+const ATTENDANCE_JOKES = {
+  "ابراهيم": "جاكم جاكم ابو قمر والميدان ياحميدان ديرو بالكم",
+  "غسان": "اليوم جاينكم الغرغر خليكم جاهزين لفنونه ومراوغاته الي ماشي منها",
+  "فهد": "الله يعينكم على اللعب الخايس فهدوه سجل حضوره",
+  "يحيى": "يحيى لاتجيب كبوسك مافينا تكسر علينا الشاشه",
+};
+
 // Central permission check. `level` is "member" (any logged-in user) or
 // "admin" (admins only). If the check fails because nobody is logged in,
 // opens the login modal and remembers what to do once login succeeds.
@@ -1860,7 +1870,11 @@ async function doToggleConfirm(id) {
     await updateMember(id, { confirmed: m.confirmed });
     if (m.confirmed) {
       if (isOfficialPlayDay()) {
-        sendPushNotification("تأكيد حضور جديد ⚽", `${m.name} أكّد حضوره ليوم اللعب`);
+        // A few specific people get their own running-joke line instead of
+        // the generic confirmation text, exactly as requested — everyone
+        // else keeps the normal message.
+        const body = ATTENDANCE_JOKES[m.name] || `${m.name} أكّد حضوره ليوم اللعب`;
+        sendPushNotification("تأكيد حضور جديد ⚽", body);
       } else {
         sendPushNotification("⚽ تجمّع ودي", `تم تأكيد ${m.name} للمشاركة في البطولة الودية`);
       }
@@ -2412,6 +2426,8 @@ function doGoToKnockout() {
   sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${a1?.name} ضد ${b2?.name}\n📺 MAX 2: ${b1?.name} ضد ${a2?.name}`);
   notifyIfBrothersClash(a1?.name, b2?.name, "نصف النهائي");
   notifyIfBrothersClash(b1?.name, a2?.name, "نصف النهائي");
+  notifyIfYahyaFahadClash(a1?.name, b2?.name, "نصف النهائي");
+  notifyIfYahyaFahadClash(b1?.name, a2?.name, "نصف النهائي");
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2437,6 +2453,8 @@ function doGoToKnockoutFromSingle() {
   sendPushNotification(`🥊 بدأت الأدوار الإقصائية!${cur.isOfficial ? "" : " (ودية)"}`, `📺 MAX 1: ${p1?.name} ضد ${p4?.name}\n📺 MAX 2: ${p2?.name} ضد ${p3?.name}`);
   notifyIfBrothersClash(p1?.name, p4?.name, "نصف النهائي");
   notifyIfBrothersClash(p2?.name, p3?.name, "نصف النهائي");
+  notifyIfYahyaFahadClash(p1?.name, p4?.name, "نصف النهائي");
+  notifyIfYahyaFahadClash(p2?.name, p3?.name, "نصف النهائي");
 }
 
 // Special case: with exactly 4 total participants, a full round-robin
@@ -2461,6 +2479,8 @@ function doGoToFinalDirectlyFromSingle() {
   });
   sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${p1?.name} ضد ${p2?.name}!`);
   notifyIfBrothersClash(p1?.name, p2?.name, "النهائي");
+  notifyIfYahyaFahadClash(p1?.name, p2?.name, "النهائي");
+  notifyIfIbrahimReachedFinal(p1?.name, p2?.name);
 }
 
 // Fun, varied "demolition" notifications — fires only when a match's FINAL
@@ -2546,9 +2566,76 @@ function checkCupBrothersClashesAndMark(bracket) {
     if (!a || !b) return m;
     const stageLabel = m.round === bracket.totalRounds ? "النهائي" : "نصف النهائي";
     notifyIfBrothersClash(a.name, b.name, stageLabel);
+    notifyIfYahyaFahadClash(a.name, b.name, stageLabel);
+    if (m.round === bracket.totalRounds) notifyIfIbrahimReachedFinal(a.name, b.name);
     return { ...m, brothersNotified: true };
   });
   return { ...bracket, matches: updatedMatches };
+}
+
+// ---- More running-joke rivalry notifications ----
+// A handful of specific pairings that get their own special-case
+// commentary, on top of (and independent from) the family-derby check
+// above. Some fire the instant the matchup itself is known (regardless of
+// who wins), others only once a SPECIFIC player wins that specific pairing.
+
+// يحيى/فهد: fires as soon as the two of them are drawn against each other,
+// regardless of the eventual result — same timing as the family-derby check.
+function notifyIfYahyaFahadClash(nameA, nameB, stageLabel) {
+  if (!nameA || !nameB) return;
+  const names = [nameA, nameB];
+  if (!names.includes("يحيى") || !names.includes("فهد")) return;
+  sendPushNotification(`👀 مواجهة مثيرة! (${stageLabel})`, "يحيى حالف ما يلعب مع فهد، بس ذي التصرفات عند القبايل منقودة 😂");
+}
+
+// ابراهيم reaching the final specifically gets its own teaser — fired at
+// the same "final matchup just got decided" moment as the normal final
+// announcement, only when he's one of the two finalists.
+function notifyIfIbrahimReachedFinal(nameA, nameB) {
+  if (!nameA || !nameB) return;
+  if (![nameA, nameB].includes("ابراهيم")) return;
+  sendPushNotification("😳 تحذير عاجل!", "لو فاز ابراهيم بالبطولة نلغي لعبة كرة القدم خلاص 😂");
+}
+
+// نصر vs مازن / نصر vs عفان: these two are outcome-specific — the joke only
+// lands when a PARTICULAR one of the two wins — so unlike the checks above,
+// this needs the actual resolved winner, not just who's playing whom.
+const CROWD_SHOCK_PHRASES = [
+  "الجمهور بيمشي صلخ 😂",
+  "الجمهور بيمشي بدون ملابس من الصدمة 😂",
+  "الجمهور بيرجع البيت مشي، نسوا وين ركنوا السيارة",
+  "نص الجمهور طلع يدوّر كاميرا خفية",
+  "الجمهور يبي بيان رسمي يوضح اللي صار",
+  "بعض الجمهور أنكر انه حضر المباراة أصلاً 😅",
+  "الجمهور طلب مراجعة قوانين الفيزياء بعد اللي شافوه",
+  "حد من الجمهور صلّى صلاة الشكر من هول الصدمة",
+  "نص الملعب طلع ماشي، ما تحملوا الصدمة",
+  "الجمهور يطالب بتحقيق رسمي فوري 🕵️",
+  "بعض الجمهور غمي عليه من الموقف",
+  "الجمهور يبي يشتكي الاتحاد الرياضي 😂",
+];
+
+function pickCrowdShockPhrase() {
+  return CROWD_SHOCK_PHRASES[Math.floor(Math.random() * CROWD_SHOCK_PHRASES.length)];
+}
+
+// Fires only the instant a match freshly resolves to one of these specific
+// winner/pairing outcomes — compares the winner BEFORE this field update to
+// the winner AFTER, so it fires exactly once per fresh result and never
+// re-fires if an admin nudges an already-decided score while double-
+// checking it (same "freshness" pattern as the 3-0 demolition check).
+function notifyIfSpecialRivalryOutcome(oldMatch, newMatch, stageLabel) {
+  if (!newMatch.a || !newMatch.b) return;
+  const oldWinner = resolveKnockoutWinner(oldMatch);
+  const newWinner = resolveKnockoutWinner(newMatch);
+  if (!newWinner || (oldWinner && oldWinner.id === newWinner.id)) return;
+
+  const names = [newMatch.a.name, newMatch.b.name];
+  if (names.includes("نصر") && names.includes("مازن") && newWinner.name === "مازن") {
+    sendPushNotification(`⚔️ مواجهة بين نصر ومازن! (${stageLabel})`, `فاز مازن! ${pickCrowdShockPhrase()}`);
+  } else if (names.includes("نصر") && names.includes("عفان") && newWinner.name === "نصر") {
+    sendPushNotification(`⚔️ مواجهة بين نصر وعفان! (${stageLabel})`, `فاز نصر! ${pickCrowdShockPhrase()}`);
+  }
 }
 
 // Resolves the winner of a knockout match (semi-final or final), falling
@@ -2657,7 +2744,11 @@ function doUpdateCupField(matchId, field, value) {
   const match = bracket.matches.find((m) => m.id === matchId);
   const { a, b } = getCupMatchPlayers(bracket, match);
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
-  notifyIfFreshDemolition({ ...match, a, b }, field, parsed);
+  const oldMatch = { ...match, a, b };
+  const newMatch = { ...oldMatch, [field]: parsed };
+  notifyIfFreshDemolition(oldMatch, field, parsed);
+  const stageLabel = match.round === bracket.totalRounds ? "النهائي" : (match.round === bracket.totalRounds - 1 ? "نصف النهائي" : "");
+  if (stageLabel) notifyIfSpecialRivalryOutcome(oldMatch, newMatch, stageLabel);
   const updatedMatches = bracket.matches.map((m) => (m.id === matchId ? { ...m, [field]: parsed } : m));
   const finalBracket = checkCupBrothersClashesAndMark({ ...bracket, matches: updatedMatches });
   updateCurrent({ cupBracket: finalBracket });
@@ -2681,7 +2772,10 @@ function doUpdateSemiField(key, field, value) {
   const semis = cur.semis;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
   notifyIfFreshDemolition(semis[key], field, parsed);
-  const updated = { ...semis, [key]: { ...semis[key], [field]: parsed } };
+  const oldMatch = semis[key];
+  const newMatch = { ...oldMatch, [field]: parsed };
+  notifyIfSpecialRivalryOutcome(oldMatch, newMatch, "نصف النهائي");
+  const updated = { ...semis, [key]: newMatch };
   updateCurrent({ semis: updated });
 }
 
@@ -2694,13 +2788,18 @@ function doGoToFinal() {
   updateCurrent({ final: { a: w1, b: w2, scoreA: null, scoreB: null, penA: null, penB: null } });
   sendPushNotification(`🏆 النهائي!${cur.isOfficial ? "" : " (ودية)"}`, `📺 شاهد النهائي حصرياً على قنوات العزبة MAX1: ${w1.name} ضد ${w2.name}!`);
   notifyIfBrothersClash(w1.name, w2.name, "النهائي");
+  notifyIfYahyaFahadClash(w1.name, w2.name, "النهائي");
+  notifyIfIbrahimReachedFinal(w1.name, w2.name);
 }
 
 function doUpdateFinalField(field, value) {
   const cur = appState.current;
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
   notifyIfFreshDemolition(cur.final, field, parsed);
-  updateCurrent({ final: { ...cur.final, [field]: parsed } });
+  const oldMatch = cur.final;
+  const newMatch = { ...oldMatch, [field]: parsed };
+  notifyIfSpecialRivalryOutcome(oldMatch, newMatch, "النهائي");
+  updateCurrent({ final: newMatch });
 }
 
 function doFinishKnockout() {

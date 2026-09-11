@@ -1311,20 +1311,82 @@ function isOfficialPlayDay() {
 
 // A few members get their own running-joke line the instant they confirm
 // attendance for an official (Thursday/Friday) play day — used in place of
-// the generic "أكّد حضوره" text, exact wording as given. All ten members
-// now have one.
+// the generic "أكّد حضوره" text. Every member now has a small rotating pool
+// of phrases (not just one fixed line each) so it doesn't read identically
+// every single time — each pool keeps that person's established theme,
+// just with a few varied ways of saying it.
 const ATTENDANCE_JOKES = {
-  "ابراهيم": "جاكم جاكم ابو قمر والميدان ياحميدان ديرو بالكم",
-  "غسان": "اليوم جاينكم الغرغر خليكم جاهزين لفنونه ومراوغاته الي ماشي منها",
-  "فهد": "الله يعينكم على اللعب الخايس فهدوه سجل حضوره",
-  "يحيى": "يحيى سجل حضوره واستمتعو بالتيكي تاكا",
-  "تركي": "تركي سجل حضوره قابلو عماركم",
-  "نصر": "نصر سجل حضوره واستعدوا لهجمات سريعة ما تعرفون منها",
-  "مازن": "مازن سجل حضوره واستعدوا لمراوغات تلخبط راسكم",
-  "عفان": "عفان سجل حضوره والحماس صار كامل الليلة",
-  "سيف": "سيف سجل حضوره واستعدوا لتسديدات ما ترحم",
-  "احمد": "احمد سجل حضوره والملعب صار جاهز للمشاهير",
+  "ابراهيم": [
+    "جاكم جاكم ابو قمر والميدان ياحميدان ديرو بالكم",
+    "ابراهيم وصل الميدان! خلوا القلوب ثابتة",
+    "أبو قمر سجل حضوره، الليلة الملعب له",
+    "ديرو بالكم، أبو قمر ما يجي إلا وبيسوي شي",
+  ],
+  "غسان": [
+    "اليوم جاينكم الغرغر خليكم جاهزين لفنونه ومراوغاته الي ماشي منها",
+    "الغرغر وصل! حضّروا الأعصاب لمراوغاته اللي ما تخلص",
+    "غسان سجل حضوره، استعدوا لعرض فني ما بيصير بغيره",
+    "يالله يا خيل، الغرغر بالملعب — اربطوا حيلكم",
+  ],
+  "فهد": [
+    "الله يعينكم على اللعب الخايس فهدوه سجل حضوره",
+    "فهدوه وصل! الله يستر من كعوبه اليوم",
+    "استعدوا يا جماعة، فهد سجل حضوره واللعب بيصير خشن شوي",
+    "فهدوه بالملعب! خلوا الإسعاف على الخط",
+  ],
+  "يحيى": [
+    "يحيى سجل حضوره واستمتعو بالتيكي تاكا",
+    "يحيى وصل! استعدوا لتمريرات ناعمة الليلة",
+    "يحيى سجل حضوره، الكرة بترقص الليلة",
+    "يحيى بالملعب، شغل التيكي تاكا يبدأ الحين",
+  ],
+  "تركي": [
+    "تركي سجل حضوره قابلو عماركم",
+    "تركي وصل! استعدوا، الليلة صعبة عليكم",
+    "تركي بالملعب، اللي يواجهه يدعي له بالسلامة",
+    "تركي سجل حضوره، شدوا الحيل من الحين",
+  ],
+  "نصر": [
+    "نصر سجل حضوره واستعدوا لهجمات سريعة ما تعرفون منها",
+    "نصر وصل! سرعته الليلة ما لها حل",
+    "نصر سجل حضوره، الدفاع يحتاج تركيز مضاعف",
+    "نصر بالملعب، الهجمات المفاجئة تبدأ الحين",
+  ],
+  "مازن": [
+    "مازن سجل حضوره واستعدوا لمراوغات تلخبط راسكم",
+    "مازن وصل! جهزوا الرقبة، بيدوّركم يمين ويسار",
+    "مازن سجل حضوره، الكرة معه ما تنطاح بسهولة",
+    "مازن بالملعب، استعدوا لعرض خفة حركة",
+  ],
+  "عفان": [
+    "عفان سجل حضوره والحماس صار كامل الليلة",
+    "عفان وصل! الليلة بتكون مليانة إثارة",
+    "عفان سجل حضوره، خلوا التوقعات جانب",
+    "عفان بالملعب، شي أكيد ما راح يصير ملل",
+  ],
+  "سيف": [
+    "سيف سجل حضوره واستعدوا لتسديدات ما ترحم",
+    "سيف وصل! الحارس يحتاج يصلي قبل لا يبدأ",
+    "سيف سجل حضوره، رجله اليوم مليانة نار",
+    "سيف بالملعب، استعدوا لتسديدات ما تشوفون منها",
+  ],
+  "احمد": [
+    "احمد سجل حضوره والملعب صار جاهز للمشاهير",
+    "احمد وصل! النجم وصل والباقي كومبارس",
+    "احمد سجل حضوره، الليلة عرض خاص",
+    "احمد بالملعب، استعدوا تشوفون الاحتراف",
+  ],
 };
+
+// Resolves a member's attendance line — a plain string as-is, a random pick
+// from an array for members with a rotating pool, or null if they don't
+// have a custom line at all (falls back to the generic confirmation text).
+function pickAttendanceJoke(name) {
+  const entry = ATTENDANCE_JOKES[name];
+  if (!entry) return null;
+  if (Array.isArray(entry)) return entry[Math.floor(Math.random() * entry.length)];
+  return entry;
+}
 
 // Central permission check. `level` is "member" (any logged-in user) or
 // "admin" (admins only). If the check fails because nobody is logged in,
@@ -1880,7 +1942,7 @@ async function doToggleConfirm(id) {
         // A few specific people get their own running-joke line instead of
         // the generic confirmation text, exactly as requested — everyone
         // else keeps the normal message.
-        const body = ATTENDANCE_JOKES[m.name] || `${m.name} أكّد حضوره ليوم اللعب`;
+        const body = pickAttendanceJoke(m.name) || `${m.name} أكّد حضوره ليوم اللعب`;
         sendPushNotification("تأكيد حضور جديد ⚽", body);
       } else {
         sendPushNotification("⚽ تجمّع ودي", `تم تأكيد ${m.name} للمشاركة في البطولة الودية`);

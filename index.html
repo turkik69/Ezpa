@@ -1317,6 +1317,7 @@ const ATTENDANCE_JOKES = {
   "غسان": "اليوم جاينكم الغرغر خليكم جاهزين لفنونه ومراوغاته الي ماشي منها",
   "فهد": "الله يعينكم على اللعب الخايس فهدوه سجل حضوره",
   "يحيى": "يحيى لاتجيب كبوسك مافينا تكسر علينا الشاشه",
+  "تركي": "تركي سجل حضوره قابلو عماركم",
 };
 
 // Central permission check. `level` is "member" (any logged-in user) or
@@ -2428,6 +2429,8 @@ function doGoToKnockout() {
   notifyIfBrothersClash(b1?.name, a2?.name, "نصف النهائي");
   notifyIfYahyaFahadClash(a1?.name, b2?.name, "نصف النهائي");
   notifyIfYahyaFahadClash(b1?.name, a2?.name, "نصف النهائي");
+  notifyGeneralMatchupJoke(a1?.name, b2?.name, "نصف النهائي");
+  notifyGeneralMatchupJoke(b1?.name, a2?.name, "نصف النهائي");
 }
 
 // Single-group mode: top 4 of the overall table advance. Standard seeding
@@ -2455,6 +2458,8 @@ function doGoToKnockoutFromSingle() {
   notifyIfBrothersClash(p2?.name, p3?.name, "نصف النهائي");
   notifyIfYahyaFahadClash(p1?.name, p4?.name, "نصف النهائي");
   notifyIfYahyaFahadClash(p2?.name, p3?.name, "نصف النهائي");
+  notifyGeneralMatchupJoke(p1?.name, p4?.name, "نصف النهائي");
+  notifyGeneralMatchupJoke(p2?.name, p3?.name, "نصف النهائي");
 }
 
 // Special case: with exactly 4 total participants, a full round-robin
@@ -2481,6 +2486,7 @@ function doGoToFinalDirectlyFromSingle() {
   notifyIfBrothersClash(p1?.name, p2?.name, "النهائي");
   notifyIfYahyaFahadClash(p1?.name, p2?.name, "النهائي");
   notifyIfIbrahimReachedFinal(p1?.name, p2?.name);
+  notifyGeneralMatchupJoke(p1?.name, p2?.name, "النهائي");
 }
 
 // Fun, varied "demolition" notifications — fires only when a match's FINAL
@@ -2568,6 +2574,7 @@ function checkCupBrothersClashesAndMark(bracket) {
     notifyIfBrothersClash(a.name, b.name, stageLabel);
     notifyIfYahyaFahadClash(a.name, b.name, stageLabel);
     if (m.round === bracket.totalRounds) notifyIfIbrahimReachedFinal(a.name, b.name);
+    notifyGeneralMatchupJoke(a.name, b.name, stageLabel);
     return { ...m, brothersNotified: true };
   });
   return { ...bracket, matches: updatedMatches };
@@ -2595,6 +2602,40 @@ function notifyIfIbrahimReachedFinal(nameA, nameB) {
   if (!nameA || !nameB) return;
   if (![nameA, nameB].includes("ابراهيم")) return;
   sendPushNotification("😳 تحذير عاجل!", "لو فاز ابراهيم بالبطولة نلغي لعبة كرة القدم خلاص 😂");
+}
+
+// General matchup jokes: every semi-final/final pairing gets some funny
+// commentary, not just the specific rivalries above. A random one is
+// picked each time (never tied to a particular player), and this only
+// fires when NONE of the more specific matchup jokes above already
+// covered this exact pairing — so a matchup never gets two jokes stacked
+// on top of each other, while still guaranteeing every matchup gets one.
+const GENERAL_MATCHUP_JOKES = [
+  (a, b) => `${a} ضد ${b}! خلّوا القهوة جاهزة، هالمباراة بتطول من كثر الجدال بالحكم ☕😂`,
+  (a, b) => `مين بيربح بين ${a} و${b}؟ الله أعلم، بس المشجعين متأكدين 100% (وأغلبهم غلط) 😅`,
+  (a, b) => `${a} و${b} بالملعب الليلة... حضّروا نفسكم للدراما 🍿`,
+  (a, b) => `مباراة ${a} و${b}... اللي بيخسر بيقول الحكم أعمى، عادي جداً 😄`,
+  (a, b) => `استعدوا، مباراة ${a} و${b} بتصير موضوع نقاش لأسبوع كامل 😂`,
+  (a, b) => `ما أحد متأكد من نتيجة ${a} و${b}، بس الكل متأكد إنها بتكون نار 🔥`,
+  (a, b) => `${a} ضد ${b}: مباراة بسيطة بس الكلام بعدها بيكون أطول من المباراة نفسها 😂`,
+  (a, b) => `شدّوا الحيل! اللي يخسر بين ${a} و${b} بيسمع كلام لين آخر الأسبوع 😅`,
+  (a, b) => `توقعات الجمهور عن ${a} و${b} غلط زي العادة، بس هذا ما يمنعهم يتوقعون 😂`,
+  (a, b) => `${a} و${b} بالملعب... ربي يستر من اللي بيصير 😂`,
+  (a, b) => `مواجهة ${a} و${b}: النتيجة مجهولة، لكن الزعل بعد المباراة مضمون 100% 😅`,
+  (a, b) => `${a} ضد ${b}! حتى الكرة نفسها متوترة من هالمواجهة 😂`,
+];
+
+function pickGeneralMatchupJoke(nameA, nameB) {
+  const fn = GENERAL_MATCHUP_JOKES[Math.floor(Math.random() * GENERAL_MATCHUP_JOKES.length)];
+  return fn(nameA, nameB);
+}
+
+function notifyGeneralMatchupJoke(nameA, nameB, stageLabel) {
+  if (!nameA || !nameB) return;
+  if (areBrothers(nameA, nameB)) return; // already covered by the family-derby notification
+  const names = [nameA, nameB];
+  if (names.includes("يحيى") && names.includes("فهد")) return; // already covered by its own joke
+  sendPushNotification(`😂 مواجهة! (${stageLabel})`, pickGeneralMatchupJoke(nameA, nameB));
 }
 
 // نصر vs مازن / نصر vs عفان: these two are outcome-specific — the joke only
@@ -2790,6 +2831,7 @@ function doGoToFinal() {
   notifyIfBrothersClash(w1.name, w2.name, "النهائي");
   notifyIfYahyaFahadClash(w1.name, w2.name, "النهائي");
   notifyIfIbrahimReachedFinal(w1.name, w2.name);
+  notifyGeneralMatchupJoke(w1.name, w2.name, "النهائي");
 }
 
 function doUpdateFinalField(field, value) {

@@ -593,3 +593,244 @@ header,.header-crest,.header-crest img{
   }
   .tab-btn::before{width:17px;height:17px;min-width:17px}
 }
+
+
+/* ===== Premium 3D icon & crest layer =====
+   Pure CSS/SVG masks: no post-render DOM changes, so the UI stays stable. */
+
+/* Section icon tiles become tactile, dimensional objects instead of emoji. */
+.section-icon-title .icon{
+  position:relative!important;
+  overflow:visible!important;
+  font-size:0!important;
+  color:transparent!important;
+  background:
+    radial-gradient(circle at 30% 22%,rgba(255,255,255,.62),transparent 22%),
+    linear-gradient(145deg,color-mix(in srgb,var(--card-accent,var(--page-accent)) 88%,#fff 12%),color-mix(in srgb,var(--card-accent,var(--page-accent2)) 72%,#07111f 28%))!important;
+  border:1px solid rgba(255,255,255,.34)!important;
+  box-shadow:
+    inset 0 2px 2px rgba(255,255,255,.42),
+    inset 0 -7px 12px rgba(0,0,0,.20),
+    0 3px 0 rgba(0,0,0,.22),
+    0 12px 22px rgba(0,0,0,.24)!important;
+}
+.section-icon-title .icon::before{
+  content:"";
+  position:absolute;
+  inset:9px;
+  display:block;
+  background:linear-gradient(180deg,#fff,#dbe8f7 58%,#9eb0c8);
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-position:center;mask-position:center;
+  -webkit-mask-size:contain;mask-size:contain;
+  filter:none!important;
+}
+.section-icon-title .icon::after{
+  content:"";
+  position:absolute;
+  left:20%;right:20%;bottom:-7px;height:7px;border-radius:50%;
+  background:rgba(0,0,0,.30);
+  transform:none!important;
+  filter:none!important;
+  opacity:.58;
+}
+
+/* Members icon */
+.card.theme-members .section-icon-title .icon::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-2.1C2 15.65 4.65 13 7.9 13h1.2c3.25 0 5.9 2.65 5.9 5.9V21H2Zm14.3 0v-2.1c0-2.05-.78-3.92-2.06-5.33.57-.36 1.25-.57 1.98-.57h.56A5.22 5.22 0 0 1 22 18.22V21h-5.7Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-2.1C2 15.65 4.65 13 7.9 13h1.2c3.25 0 5.9 2.65 5.9 5.9V21H2Zm14.3 0v-2.1c0-2.05-.78-3.92-2.06-5.33.57-.36 1.25-.57 1.98-.57h.56A5.22 5.22 0 0 1 22 18.22V21h-5.7Z'/%3E%3C/svg%3E");
+}
+
+/* Tournament / knockout trophy icon */
+.card.theme-gold .section-icon-title .icon::before,
+.card.theme-knockout .section-icon-title .icon::before{
+  background:linear-gradient(180deg,#fff7cb 0%,#ffd56d 45%,#b77916 100%);
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Zm10 5v3.45A4.85 4.85 0 0 0 19 8V7h-2ZM5 7v1c0 1.02.76 1.95 2 2.45V7H5Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Zm10 5v3.45A4.85 4.85 0 0 0 19 8V7h-2ZM5 7v1c0 1.02.76 1.95 2 2.45V7H5Z'/%3E%3C/svg%3E");
+}
+
+/* Stats podium icon */
+.card.theme-stats .section-icon-title .icon::before,
+.sidebar-card .section-icon-title .icon::before{
+  background:linear-gradient(180deg,#ffffff,#d9e1ec 52%,#93a1b7);
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M9 3h6v18H9V3ZM2 10h6v11H2V10Zm14 4h6v7h-6v-7Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M9 3h6v18H9V3ZM2 10h6v11H2V10Zm14 4h6v7h-6v-7Z'/%3E%3C/svg%3E");
+}
+
+/* Friendly / celebration spark icon */
+.card.theme-friendly .section-icon-title .icon::before{
+  background:linear-gradient(180deg,#fff4cf,#ffb64d 50%,#ff7a45);
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='m12 2 1.55 5.45L19 9l-5.45 1.55L12 16l-1.55-5.45L5 9l5.45-1.55L12 2Zm7 11 .82 2.18L22 16l-2.18.82L19 19l-.82-2.18L16 16l2.18-.82L19 13ZM5 14l1.1 2.9L9 18l-2.9 1.1L5 22l-1.1-2.9L1 18l2.9-1.1L5 14Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='m12 2 1.55 5.45L19 9l-5.45 1.55L12 16l-1.55-5.45L5 9l5.45-1.55L12 2Zm7 11 .82 2.18L22 16l-2.18.82L19 19l-.82-2.18L16 16l2.18-.82L19 13ZM5 14l1.1 2.9L9 18l-2.9 1.1L5 22l-1.1-2.9L1 18l2.9-1.1L5 14Z'/%3E%3C/svg%3E");
+}
+
+/* Club crests: preserve original image pixels; remove white plaque; add depth only around actual crest. */
+.club-logo{
+  width:30px!important;
+  height:30px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  object-fit:contain!important;
+  box-shadow:none!important;
+  filter:
+    drop-shadow(0 1px 0 rgba(255,255,255,.18))
+    drop-shadow(0 4px 3px rgba(0,0,0,.38))
+    drop-shadow(0 9px 8px rgba(0,0,0,.22))!important;
+  image-rendering:auto!important;
+}
+.club-logo.club-logo-sm{width:24px!important;height:24px!important}
+.club-logo.club-logo-lg{width:40px!important;height:40px!important}
+.member-club{min-height:34px!important;gap:9px!important}
+.member-row:hover .club-logo{filter:
+  drop-shadow(0 1px 0 rgba(255,255,255,.22))
+  drop-shadow(0 5px 4px rgba(0,0,0,.42))
+  drop-shadow(0 10px 10px rgba(0,0,0,.24))!important}
+
+/* Premium champion / final presentation */
+.final-box{
+  position:relative!important;
+  overflow:hidden!important;
+  padding:24px!important;
+  background:
+    radial-gradient(circle at 50% -15%,rgba(255,216,112,.23),transparent 36%),
+    linear-gradient(145deg,rgba(255,200,87,.14),rgba(8,20,38,.82))!important;
+  border:1px solid rgba(255,216,112,.38)!important;
+  box-shadow:inset 0 1px rgba(255,255,255,.10),0 18px 40px rgba(0,0,0,.24)!important;
+}
+.final-box::before{
+  content:"";
+  display:block;
+  width:62px;height:62px;
+  margin:0 auto 12px;
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 32% 24%,rgba(255,255,255,.7),transparent 20%),
+    linear-gradient(145deg,#ffe89a,#d89b28 58%,#75440b);
+  box-shadow:inset 0 2px rgba(255,255,255,.5),inset 0 -8px rgba(87,45,0,.22),0 4px 0 #6d4517,0 14px 25px rgba(255,190,60,.18);
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Z'/%3E%3C/svg%3E");
+  -webkit-mask-size:contain;mask-size:contain;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-position:center;mask-position:center;
+}
+.final-box .group-title{
+  text-align:center!important;
+  font-size:17px!important;
+  color:#ffe49b!important;
+  border-bottom:none!important;
+  margin-bottom:14px!important;
+}
+
+/* Top-3 historical podium gets genuinely dimensional medals. */
+.stat-row:nth-child(2),
+.stat-row:nth-child(3),
+.stat-row:nth-child(4){
+  border-radius:12px;
+  margin-bottom:6px;
+  padding:10px 8px!important;
+}
+.stat-row:nth-child(2){background:linear-gradient(90deg,rgba(255,207,73,.15),rgba(255,207,73,.025))}
+.stat-row:nth-child(3){background:linear-gradient(90deg,rgba(214,223,236,.13),rgba(214,223,236,.02))}
+.stat-row:nth-child(4){background:linear-gradient(90deg,rgba(205,132,75,.14),rgba(205,132,75,.02))}
+.stat-row:nth-child(2) .stat-rank,
+.stat-row:nth-child(3) .stat-rank,
+.stat-row:nth-child(4) .stat-rank{
+  width:34px!important;height:34px!important;border-radius:50%!important;
+  font-size:12px!important;font-weight:900!important;
+  border:1px solid rgba(255,255,255,.30)!important;
+  box-shadow:inset 0 2px rgba(255,255,255,.45),inset 0 -5px rgba(0,0,0,.18),0 3px 0 rgba(0,0,0,.24),0 8px 15px rgba(0,0,0,.20)!important;
+}
+.stat-row:nth-child(2) .stat-rank{background:radial-gradient(circle at 30% 22%,#fff6bf,#f2bd35 48%,#9b6510 100%)!important}
+.stat-row:nth-child(3) .stat-rank{background:radial-gradient(circle at 30% 22%,#fff,#cbd4e0 48%,#748397 100%)!important}
+.stat-row:nth-child(4) .stat-rank{background:radial-gradient(circle at 30% 22%,#f5c19a,#b97645 48%,#70401f 100%)!important}
+
+/* Celebration screen: podium spotlight and real SVG-like crown silhouette. */
+.celebration-overlay{
+  background:
+    radial-gradient(ellipse at 50% 28%,rgba(255,204,82,.18),transparent 32%),
+    radial-gradient(ellipse at 50% 35%,rgba(45,101,190,.34),transparent 55%),
+    linear-gradient(180deg,#08142a,#030812 80%)!important;
+}
+.celebration-content{
+  width:min(92vw,520px)!important;
+  padding:36px 26px 32px!important;
+  border:1px solid rgba(255,220,125,.20);
+  border-radius:30px;
+  background:linear-gradient(160deg,rgba(255,255,255,.065),rgba(255,255,255,.018));
+  box-shadow:inset 0 1px rgba(255,255,255,.08),0 35px 80px rgba(0,0,0,.38);
+}
+.celebration-crown{
+  width:96px!important;height:80px!important;
+  font-size:0!important;
+  margin:2px auto 14px!important;
+  background:
+    radial-gradient(circle at 32% 19%,rgba(255,255,255,.82),transparent 15%),
+    linear-gradient(180deg,#fff2ae 0%,#ffd052 38%,#bd7816 78%,#6f3c08 100%)!important;
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 80'%3E%3Cpath fill='black' d='M8 24 28 43 49 10l22 33 21-19-8 43H16L8 24Zm12 48h60v6H20v-6Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 80'%3E%3Cpath fill='black' d='M8 24 28 43 49 10l22 33 21-19-8 43H16L8 24Zm12 48h60v6H20v-6Z'/%3E%3C/svg%3E");
+  -webkit-mask-size:contain;mask-size:contain;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-position:center;mask-position:center;
+  filter:
+    drop-shadow(0 2px 0 rgba(255,255,255,.22))
+    drop-shadow(0 7px 0 rgba(88,48,4,.38))
+    drop-shadow(0 18px 16px rgba(255,190,55,.20))!important;
+}
+.celebration-champion-label{
+  display:inline-block!important;
+  padding:5px 15px!important;
+  border-radius:999px!important;
+  background:rgba(255,205,79,.12)!important;
+  border:1px solid rgba(255,213,103,.28)!important;
+  color:#ffdb77!important;
+  letter-spacing:1.4px!important;
+}
+.celebration-champion-name{
+  font-size:clamp(36px,9vw,52px)!important;
+  margin-top:10px!important;
+  color:#fff8df!important;
+  text-shadow:0 3px 0 rgba(104,62,7,.50),0 14px 30px rgba(255,192,52,.18)!important;
+}
+.celebration-runnerup{
+  display:inline-flex!important;align-items:center;justify-content:center;
+  margin-top:18px!important;padding:9px 14px!important;border-radius:14px;
+  background:linear-gradient(145deg,rgba(214,224,238,.12),rgba(255,255,255,.025));
+  border:1px solid rgba(220,228,239,.18);
+  color:#dce4ef!important;
+}
+
+/* Champion banner turns into a trophy plaque. */
+.champion-banner{
+  position:relative!important;
+  padding:16px 16px 16px 58px!important;
+  min-height:54px!important;
+  display:flex!important;align-items:center;justify-content:center!important;
+  font-size:18px!important;
+  background:
+    radial-gradient(circle at 18% 20%,rgba(255,255,255,.24),transparent 20%),
+    linear-gradient(135deg,rgba(255,211,94,.25),rgba(105,63,11,.16))!important;
+  border:1px solid rgba(255,218,112,.42)!important;
+  box-shadow:inset 0 1px rgba(255,255,255,.14),0 12px 26px rgba(0,0,0,.20)!important;
+}
+.champion-banner::before{
+  content:"";
+  position:absolute;left:17px;top:50%;width:30px;height:30px;
+  transform:translateY(-50%);
+  background:linear-gradient(180deg,#fff0ad,#ffc849 52%,#a7640b);
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7 2h10v3h4v3c0 3.2-2.2 5.88-5.18 6.63A6.03 6.03 0 0 1 13 17.91V20h4v2H7v-2h4v-2.09a6.03 6.03 0 0 1-2.82-3.28A6.84 6.84 0 0 1 3 8V5h4V2Z'/%3E%3C/svg%3E");
+  -webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-position:center;mask-position:center;
+  filter:drop-shadow(0 5px 4px rgba(0,0,0,.28));
+}
+
+@media(max-width:600px){
+  .club-logo{width:28px!important;height:28px!important}
+  .club-logo.club-logo-sm{width:22px!important;height:22px!important}
+  .club-logo.club-logo-lg{width:36px!important;height:36px!important}
+  .celebration-content{padding:28px 16px 24px!important;border-radius:24px}
+  .celebration-crown{width:82px!important;height:70px!important}
+  .final-box{padding:16px 9px!important}
+}

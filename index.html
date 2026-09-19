@@ -3209,7 +3209,7 @@ function wheelStageHtml() {
     : groupB.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${coloredNameHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
 
   return `<div class="card theme-gold">
-    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🎡</span>القرعة الدوارة</div>
     <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين. بمجرد ما تكتمل المجموعة الأولى، الباقين ينتقلون تلقائياً للمجموعة الثانية بدون الحاجة لإكمال القرعة للجميع.</p>
     <div class="wheel-area">
@@ -3305,7 +3305,7 @@ function groupsStageHtml() {
   const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every(m => m.scoreA != null && m.scoreB != null);
 
   return `<div class="card theme-groups">
-    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">⚔️</span>دوري المجموعات</div>
     <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
     <div class="two-col">
@@ -3333,7 +3333,7 @@ function singleGroupStageHtml() {
     actionHtml = `<button class="cta-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`;
   }
   return `<div class="card theme-groups">
-    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🔀</span>مجموعة واحدة — الكل ضد الكل</div>
     <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث (إلا لو كان العدد الكلي 4 بالضبط، فالأول والثاني يتأهلون للنهائي مباشرة).</p>
     ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
@@ -3455,7 +3455,7 @@ function cupStageHtml() {
   </div>`;
 
   return `<div class="card theme-knockout">
-    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🥊</span>كأس خروج المغلوب</div>
     <p class="hint">الجدول كامل من البداية على جانبين يتقاربان بالنهائي. الفائز يتقدم لمكانه بالجولة التالية تلقائياً، والخاسر يبين بعلامة ✗. أي تعادل يُحسم بضربات الجزاء.</p>
     ${twoColHtml}
@@ -3510,7 +3510,7 @@ function knockoutStageHtml() {
     : `<p class="hint">4 مشاركين بالضبط — الأول والثاني بالترتيب العام تأهلوا مباشرة للنهائي بدون نصف نهائي.</p>`;
 
   return `<div class="card theme-knockout">
-    <div class="tournament-badge">🏆 ${escapeHtml(cur.name)}</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
     <div class="section-icon-title"><span class="icon">🥇</span>الأدوار الإقصائية</div>
     ${semisSectionHtml}
     ${finalHtml}
@@ -3682,7 +3682,15 @@ function statBlockHtml(title, icon, rows, valueKey, suffix) {
           <span style="flex:1">${coloredNameHtml(r.name)}</span>
           <span class="stat-value">${r[valueKey]} ${suffix}</span>
         </div>`).join("");
-  return `<div class="stat-block"><div class="stat-block-title">${icon} ${title}</div>${rowsHtml}</div>`;
+  const iconKey =
+    title.includes("تتويج") ? "crown" :
+    title.includes("تسجيلاً") ? "ball" :
+    title.includes("تلقياً") ? "goal" :
+    title.includes("وصافة") ? "silver" :
+    title.includes("النهائي") ? "final" :
+    title.includes("مجموعته") ? "down" :
+    title.includes("توقعات") ? "crystal" : "chart";
+  return `<div class="stat-block"><div class="stat-block-title"><span class="stat-title-icon icon-${iconKey}"></span><span>${title}</span></div>${rowsHtml}</div>`;
 }
 
 function statsPanelHtml(archive, compact, labelOverride) {
@@ -3924,10 +3932,10 @@ function celebrationHtml() {
     <canvas id="celebrationCanvas" class="celebration-canvas"></canvas>
     <div class="celebration-content">
       <div class="celebration-tournament">${escapeHtml(tournamentName)}</div>
-      <div class="celebration-crown">👑</div>
+      <div class="celebration-crown" aria-hidden="true"></div>
       <div class="celebration-champion-label">البطل</div>
       <div class="celebration-champion-name">${coloredNameHtml(championName)}</div>
-      ${runnerUpName ? `<div class="celebration-runnerup">🥈 الوصيف: ${coloredNameHtml(runnerUpName)}</div>` : ""}
+      ${runnerUpName ? `<div class="celebration-runnerup"><span class="runnerup-medal-3d" aria-hidden="true"></span><span>الوصيف: ${coloredNameHtml(runnerUpName)}</span></div>` : ""}
       <button class="celebration-close-btn" onclick="closeCelebration()">إغلاق ✕</button>
     </div>
   </div>`;

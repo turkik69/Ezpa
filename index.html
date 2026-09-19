@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=12">
+<link rel="stylesheet" href="theme-v2.css?v=13">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -4269,94 +4269,150 @@ function loginModalHtml() {
 
 function backupsListSectionHtml() {
   const state = backupsListState;
-  if (state.loading) return `<p class="hint" style="margin-top:8px;">جارِ التحميل...</p>`;
+  if (state.loading) return `<div class="profile-inline-state"><span class="profile-loader"></span><span>جارِ تحميل النسخ المحفوظة...</span></div>`;
   if (state.error) return `<div class="warn-note">${escapeHtml(state.error)}</div>`;
-  if (state.backups.length === 0) return `<div class="empty-note">ما فيه نسخ محفوظة بعد.</div>`;
-  const reasonLabels = { manual: "يدوية", auto_tournament_complete: "تلقائية (بعد بطولة)", pre_restore_safety: "تلقائية (قبل استرجاع)" };
+  if (state.backups.length === 0) return `<div class="empty-note profile-empty-state">ما فيه نسخ محفوظة بعد.</div>`;
+  const reasonLabels = { manual: "يدوية", auto_tournament_complete: "بعد بطولة", pre_restore_safety: "قبل استرجاع" };
   const rows = state.backups.map((b) => {
     const dateLabel = new Date(b.created_at).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    return `<div class="prediction-row">
-      <div class="prediction-row-name">${escapeHtml(dateLabel)}</div>
-      <div class="prediction-row-picks">${reasonLabels[b.trigger_reason] || b.trigger_reason}</div>
-      <button class="member-remove-btn" style="width:100%; margin-top:6px; opacity:0.8;" onclick="restoreFromAutoBackup('${b.id}','${b.created_at}')">↩️ استرجاع هذي النسخة</button>
+    return `<div class="backup-card">
+      <div class="backup-card-icon"><span class="inline-ui-icon ui-backup" aria-hidden="true"></span></div>
+      <div class="backup-card-copy">
+        <strong>${escapeHtml(dateLabel)}</strong>
+        <small>${escapeHtml(reasonLabels[b.trigger_reason] || b.trigger_reason)}</small>
+      </div>
+      <button class="backup-restore-btn" onclick="restoreFromAutoBackup('${b.id}','${b.created_at}')"><span class="restore-arrow" aria-hidden="true"></span>استرجاع</button>
     </div>`;
   }).join("");
-  return `<div style="margin-top:10px;">${rows}</div>`;
+  return `<div class="backup-list">${rows}</div>`;
 }
 
 function profilePageHtml() {
   if (!profileModal) return "";
   const user = getCurrentUser();
   if (!user) return "";
-  const roleLabel = user.role === "admin" ? "مشرف — كل الصلاحيات" : "عضو — تأكيد حضور، إضافة/حذف أعضاء، إنهاء يوم اللعب";
+
+  const isUserAdmin = isAdmin();
+  const roleLabel = user.role === "admin" ? "مشرف" : "عضو";
+  const roleHint = user.role === "admin"
+    ? "إدارة البطولة والأعضاء والنسخ الاحتياطية"
+    : "تأكيد الحضور والتخصيص وإدارة حسابك";
   const permState = notificationPermissionState();
-  let notifSectionHtml = "";
-  if (permState === "unsupported") {
-    notifSectionHtml = `<p class="hint">الإشعارات ما مدعومة بهذا المتصفح.</p>`;
-  } else if (permState === "granted") {
-    notifSectionHtml = `
-      <div class="winner-banner" style="margin-bottom:10px;"><span class="inline-ui-icon ui-bell" aria-hidden="true"></span>الإشعارات مفعّلة على هذا الجهاز</div>
-      <button class="member-remove-btn" style="width:100%; opacity:0.7;" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
-  } else if (permState === "denied") {
-    notifSectionHtml = `<p class="hint warn-note">حظرت الإشعارات لهذا الموقع من إعدادات المتصفح. لازم تفعّلها يدوياً من إعدادات المتصفح/الجوال عشان تشتغل.</p>`;
-  } else {
-    notifSectionHtml = `<button class="cta-btn" onclick="enablePushForThisDevice()"><span class="inline-ui-icon ui-bell" aria-hidden="true"></span>فعّل الإشعارات على هذا الجهاز</button>`;
-  }
   const currentColor = profileModal.color != null ? profileModal.color : (user.color || "#F2EEE3");
   const swatchesHtml = PLAYER_COLOR_PALETTE.map(c => `
-    <div class="color-swatch ${c === currentColor ? 'selected' : ''}" style="background:${c}" onclick="updateProfileField('color', '${c}')"></div>
+    <button class="color-swatch ${c === currentColor ? 'selected' : ''}" style="--swatch:${c};background:${c}" onclick="updateProfileField('color', '${c}')" aria-label="اختيار اللون"></button>
   `).join("");
-  return `<div class="card theme-members">
-    <div class="section-icon-title"><span class="icon ui-icon ui-profile" aria-hidden="true"></span>${coloredNameHtml(user.name)}</div>
-    <p class="hint">${roleLabel}</p>
 
-    ${isAdmin() ? `
-    <div class="archive-divider"></div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-admin" aria-hidden="true"></span>لوحة المشرف</div>
-    ${isTurki() ? `
-    <div class="add-member-label"><span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>إرسال إشعار لكل الأعضاء</div>
-    <p class="hint">هذي الميزة خاصة فيك بس — اكتب رسالة وتوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات.</p>
-    <button class="cta-btn" onclick="openMessageModal()"><span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>كتابة إشعار جديد</button>
-    <div class="archive-divider" style="margin:14px 0;"></div>
-    ` : ""}
-    <div class="add-member-label"><span class="inline-ui-icon ui-backup" aria-hidden="true"></span>النسخ الاحتياطي</div>
-    <p class="hint">احفظ نسخة من كل بيانات الدوري (الأعضاء، الأرشيف، البطولة الجارية) بملف على جهازك، أو استرجع نسخة سابقة لو صار خلل أو فقدان بيانات. نسخة تلقائية تُحفظ أيضاً بعد كل بطولة تكتمل بدون أي تدخل منك.</p>
-    <button class="cta-btn" onclick="exportBackupFile()"><span class="inline-ui-icon ui-download" aria-hidden="true"></span>تصدير نسخة احتياطية الآن</button>
-    <label class="cta-btn" style="display:block; text-align:center; cursor:pointer; margin-top:8px;">
-      📤 استرجاع من ملف
-      <input type="file" accept="application/json" style="display:none;" onchange="handleBackupFileImport(this)">
-    </label>
-    <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.8;" onclick="loadBackupsList()">عرض النسخ التلقائية المحفوظة</button>
-    ${backupsListState ? backupsListSectionHtml() : ""}
-    ` : ""}
+  let notifSectionHtml = "";
+  if (permState === "unsupported") {
+    notifSectionHtml = `<div class="profile-setting-status neutral">الإشعارات غير مدعومة على هذا المتصفح</div>`;
+  } else if (permState === "granted") {
+    notifSectionHtml = `
+      <div class="profile-setting-status success"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>الإشعارات مفعّلة على هذا الجهاز</div>
+      <button class="profile-secondary-btn danger-soft" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
+  } else if (permState === "denied") {
+    notifSectionHtml = `<div class="profile-setting-status warning">الإشعارات محظورة من إعدادات الجهاز أو المتصفح</div>`;
+  } else {
+    notifSectionHtml = `<button class="profile-primary-btn" onclick="enablePushForThisDevice()"><span class="inline-ui-icon ui-bell" aria-hidden="true"></span>تفعيل الإشعارات</button>`;
+  }
 
-    <div class="archive-divider"></div>
-    <div class="add-member-label">التخصيص الشخصي</div>
-    <p class="hint">اختر لونك المميز ولقبك — يظهرون جنب اسمك بكل مكان بالتطبيق.</p>
-    <div class="color-swatch-row">${swatchesHtml}</div>
-    <div class="input-row" style="margin-top:10px;">
-      <input class="text-input" placeholder="لقبك (اختياري، مثلاً: الثعلب)" maxlength="20" value="${escapeHtml(profileModal.nickname != null ? profileModal.nickname : (user.nickname || ''))}" oninput="updateProfileField('nickname', this.value)">
+  const adminPanel = isUserAdmin ? `
+    <div class="profile-section admin-control-section">
+      <div class="profile-section-head">
+        <span class="profile-section-icon ui-admin-card"></span>
+        <div><strong>لوحة المشرف</strong><small>أدوات الإدارة والنسخ الاحتياطي</small></div>
+        <span class="profile-access-badge">صلاحية مشرف</span>
+      </div>
+
+      ${isTurki() ? `
+      <div class="admin-action-card broadcast-card">
+        <span class="admin-action-icon"><span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span></span>
+        <div class="admin-action-copy"><strong>إرسال إشعار للأعضاء</strong><small>إرسال رسالة مباشرة لكل جهاز فعّل إشعارات التطبيق.</small></div>
+        <button class="admin-action-btn" onclick="openMessageModal()">كتابة إشعار</button>
+      </div>` : ""}
+
+      <div class="backup-panel">
+        <div class="backup-panel-head">
+          <span class="admin-action-icon"><span class="inline-ui-icon ui-backup" aria-hidden="true"></span></span>
+          <div><strong>النسخ الاحتياطي</strong><small>حفظ واسترجاع بيانات الدوري والبطولات والأعضاء.</small></div>
+        </div>
+        <div class="admin-button-grid">
+          <button class="profile-secondary-btn" onclick="exportBackupFile()"><span class="inline-ui-icon ui-download" aria-hidden="true"></span>تصدير نسخة</button>
+          <label class="profile-secondary-btn profile-file-btn">
+            <span class="profile-upload-icon" aria-hidden="true"></span>استرجاع ملف
+            <input type="file" accept="application/json" style="display:none;" onchange="handleBackupFileImport(this)">
+          </label>
+        </div>
+        <button class="backup-list-toggle" onclick="loadBackupsList()"><span class="history-mini-icon" aria-hidden="true"></span>عرض النسخ التلقائية المحفوظة</button>
+        ${backupsListState ? backupsListSectionHtml() : ""}
+      </div>
+    </div>` : "";
+
+  return `<div class="card theme-members profile-page-card">
+    <div class="profile-hero">
+      <div class="profile-avatar-shell">
+        <span class="profile-avatar-logo">${clubLogoHtml(user.club, 'club-logo-lg')}</span>
+        <span class="profile-online-dot"></span>
+      </div>
+      <div class="profile-hero-copy">
+        <small>الحساب الشخصي</small>
+        <h2>${coloredNameHtml(user.name)}</h2>
+        <div class="profile-meta">
+          <span>${escapeHtml(user.club || "بدون نادي")}</span>
+          <i></i>
+          <span>${roleLabel}</span>
+        </div>
+      </div>
+      <span class="profile-role-chip ${isUserAdmin ? 'admin' : ''}">${roleLabel}</span>
     </div>
-    <button class="cta-btn" style="margin-top:10px;" onclick="submitCustomization()">حفظ التخصيص</button>
-    ${profileModal.customizationSuccess ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
 
-    <div class="archive-divider"></div>
-    <div class="add-member-label">الإشعارات</div>
-    <p class="hint">فعّل الإشعارات عشان توصلك تنبيهات (تأكيد حضور، بداية بطولة، نتائج نهائي) حتى لو التطبيق مقفول. التفعيل خاص بهذا الجهاز فقط.</p>
-    ${notifSectionHtml}
-
-    <div class="archive-divider"></div>
-    <div class="add-member-label">تغيير رمز الدخول</div>
-    <div class="input-row" style="flex-direction:column;">
-      <input class="text-input" type="password" placeholder="رمز جديد" value="${escapeHtml(profileModal.pin1)}" oninput="updateProfileField('pin1', this.value)">
-      <input class="text-input" type="password" placeholder="أعد كتابة الرمز الجديد" value="${escapeHtml(profileModal.pin2)}" oninput="updateProfileField('pin2', this.value)">
+    <div class="profile-summary-grid">
+      <div class="profile-summary-card"><span class="profile-summary-icon ui-club-card"></span><div><strong>${escapeHtml(user.club || "—")}</strong><small>النادي</small></div></div>
+      <div class="profile-summary-card"><span class="profile-summary-icon ui-role-card"></span><div><strong>${roleLabel}</strong><small>نوع الحساب</small></div></div>
+      <div class="profile-summary-card"><span class="profile-summary-icon ui-bell-card"></span><div><strong>${permState === "granted" ? "مفعّلة" : "غير مفعّلة"}</strong><small>الإشعارات</small></div></div>
     </div>
-    ${profileModal.error ? `<div class="warn-note">${escapeHtml(profileModal.error)}</div>` : ""}
-    ${profileModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(profileModal.success)}</div>` : ""}
-    <button class="cta-btn" onclick="submitPinChange()">حفظ الرمز الجديد</button>
 
-    <div class="archive-divider"></div>
-    <button class="cta-btn danger" onclick="logout()">تسجيل الخروج</button>
+    ${adminPanel}
+
+    <div class="profile-section">
+      <div class="profile-section-head">
+        <span class="profile-section-icon ui-customize-card"></span>
+        <div><strong>التخصيص الشخصي</strong><small>لونك ولقبك داخل التطبيق</small></div>
+      </div>
+      <div class="profile-field-label">اللون المميز</div>
+      <div class="color-swatch-row premium-swatches">${swatchesHtml}</div>
+      <div class="profile-field-label">اللقب</div>
+      <input class="text-input premium-profile-input" placeholder="مثلاً: الثعلب" maxlength="20" value="${escapeHtml(profileModal.nickname != null ? profileModal.nickname : (user.nickname || ''))}" oninput="updateProfileField('nickname', this.value)">
+      <button class="profile-primary-btn" onclick="submitCustomization()">حفظ التخصيص</button>
+      ${profileModal.customizationSuccess ? `<div class="profile-setting-status success">${escapeHtml(profileModal.customizationSuccess)}</div>` : ""}
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-head">
+        <span class="profile-section-icon ui-notification-card"></span>
+        <div><strong>الإشعارات</strong><small>تنبيهات الحضور والبطولات والنتائج</small></div>
+      </div>
+      ${notifSectionHtml}
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-head">
+        <span class="profile-section-icon ui-security-card"></span>
+        <div><strong>الأمان ورمز الدخول</strong><small>غيّر رمز الدخول الخاص بحسابك</small></div>
+      </div>
+      <div class="profile-security-grid">
+        <input class="text-input premium-profile-input" type="password" placeholder="الرمز الجديد" value="${escapeHtml(profileModal.pin1)}" oninput="updateProfileField('pin1', this.value)">
+        <input class="text-input premium-profile-input" type="password" placeholder="تأكيد الرمز الجديد" value="${escapeHtml(profileModal.pin2)}" oninput="updateProfileField('pin2', this.value)">
+      </div>
+      ${profileModal.error ? `<div class="warn-note">${escapeHtml(profileModal.error)}</div>` : ""}
+      ${profileModal.success ? `<div class="profile-setting-status success">${escapeHtml(profileModal.success)}</div>` : ""}
+      <button class="profile-primary-btn" onclick="submitPinChange()">حفظ رمز الدخول</button>
+    </div>
+
+    <div class="profile-footer-actions">
+      <div><strong>جلسة الحساب</strong><span>${roleHint}</span></div>
+      <button class="profile-logout-btn" onclick="logout()"><span class="logout-icon" aria-hidden="true"></span>تسجيل الخروج</button>
+    </div>
   </div>`;
 }
 
@@ -4378,14 +4434,14 @@ function messageModalHtml() {
       </div>
       <div class="add-member-label" style="margin-top:14px;">صورة (اختياري)</div>
       <label class="cta-btn" style="display:block; text-align:center; cursor:pointer; ${messageModal.uploading ? 'opacity:0.6; pointer-events:none;' : ''}">
-        ${messageModal.uploading ? "⏳ جارِ الرفع..." : "📁 ارفع صورة من الجهاز"}
+        ${messageModal.uploading ? "جارِ الرفع..." : "ارفع صورة من الجهاز"}
         <input type="file" accept="image/*" style="display:none;" onchange="handleMessageImageFile(this)" ${messageModal.uploading ? "disabled" : ""}>
       </label>
       <div class="input-row" style="margin-top:8px;">
         <input class="text-input" placeholder="أو الصق رابط صورة مباشر" value="${escapeHtml(messageModal.imageUrl || "")}" oninput="updateMessageField('imageUrl', this.value)">
       </div>
       ${previewHtml}
-      <p class="hint" style="margin-top:6px;">💡 الصورة تظهر بشكل موثوق على أندرويد. على آيفون، بعض الأجهزة تعرض النص بس بدون الصورة — هذا قيد من نظام آبل نفسه.</p>
+      <p class="hint" style="margin-top:6px;">الصورة تظهر بشكل موثوق على أندرويد. على آيفون، بعض الأجهزة تعرض النص بس بدون الصورة — هذا قيد من نظام آبل نفسه.</p>
       ${messageModal.error ? `<div class="warn-note">${escapeHtml(messageModal.error)}</div>` : ""}
       ${messageModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(messageModal.success)}</div>` : ""}
       <button class="cta-btn" ${(messageModal.sending || messageModal.uploading) ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : `<span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>إرسال الآن`}</button>
@@ -4650,6 +4706,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=12"></script>
+<script src="theme-v2.js?v=13"></script>
 </body>
 </html>

@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=10">
+<link rel="stylesheet" href="theme-v2.css?v=11">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -2277,34 +2277,59 @@ function getAudioCtx() {
 function playTick(volume) {
   try {
     const ctx = getAudioCtx();
+    const t = ctx.currentTime;
+
+    // Short, soft mechanical roulette click instead of the old electronic bell.
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 850 + Math.random() * 60;
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.045);
-    osc.connect(gain);
+    const filter = ctx.createBiquadFilter();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(520 + Math.random() * 55, t);
+    osc.frequency.exponentialRampToValueAtTime(310, t + 0.035);
+    filter.type = "bandpass";
+    filter.frequency.value = 820;
+    filter.Q.value = 0.9;
+    gain.gain.setValueAtTime(Math.max(0.018, volume * 0.56), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+    osc.connect(filter);
+    filter.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.05);
-  } catch (e) {
-    // audio not available, fail silently
-  }
+    osc.start(t);
+    osc.stop(t + 0.06);
+  } catch (e) {}
 }
 
 function playLandThud() {
   try {
     const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 180;
-    gain.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.35);
+    const t = ctx.currentTime;
+
+    // Refined two-part landing: low soft impact + brief bright confirmation chime.
+    const thud = ctx.createOscillator();
+    const thudGain = ctx.createGain();
+    thud.type = "sine";
+    thud.frequency.setValueAtTime(125, t);
+    thud.frequency.exponentialRampToValueAtTime(58, t + 0.20);
+    thudGain.gain.setValueAtTime(0.13, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+    thud.connect(thudGain);
+    thudGain.connect(ctx.destination);
+    thud.start(t);
+    thud.stop(t + 0.25);
+
+    [659.25, 987.77].forEach((freq, i) => {
+      const chime = ctx.createOscillator();
+      const chimeGain = ctx.createGain();
+      chime.type = "sine";
+      chime.frequency.value = freq;
+      const start = t + 0.05 + i * 0.035;
+      chimeGain.gain.setValueAtTime(0.055 - i * 0.012, start);
+      chimeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
+      chime.connect(chimeGain);
+      chimeGain.connect(ctx.destination);
+      chime.start(start);
+      chime.stop(start + 0.25);
+    });
   } catch (e) {}
 }
 
@@ -3658,16 +3683,31 @@ function penaltyShootoutHtml(match, buildOnchange) {
 
 function semiPanelHtml(label, match, key) {
   const penHtml = penaltyShootoutHtml(match, (field) => `onchange="updateSemiField('${key}','${field}',this.value)"`);
-  return `<div class="group-box">
-    <h3 class="group-title">${label}</h3>
-    <div class="match-row">
-      <span class="match-name">${match.a ? playerIdentityHtml(match.a.name, true) : "—"}</span>
-      ${scoreSelectHtml(match.scoreA, `onchange="updateSemiField('${key}','scoreA',this.value)"`)}
-      <span class="vs">–</span>
-      ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
-      <span class="match-name">${match.b ? playerIdentityHtml(match.b.name, true) : "—"}</span>
+  const winner = resolveKnockoutWinner(match);
+  return `<div class="group-box knockout-match-card ${winner ? 'resolved' : ''}">
+    <div class="knockout-match-head">
+      <span class="knockout-round-badge">${escapeHtml(label)}</span>
+      <span class="knockout-match-status">${winner ? 'حُسمت' : 'بانتظار النتيجة'}</span>
+    </div>
+    <div class="knockout-versus">
+      <div class="knockout-player-side ${winner && winner.id === match.a?.id ? 'winner-side' : ''}">
+        <span class="knockout-player-logo">${match.a ? clubLogoHtml(match.a.club, 'club-logo-lg') : ''}</span>
+        <strong>${match.a ? coloredNameHtml(match.a.name, "", true) : "—"}</strong>
+        <small>${match.a?.club ? escapeHtml(match.a.club) : ''}</small>
+      </div>
+      <div class="knockout-score-core">
+        ${scoreSelectHtml(match.scoreA, `onchange="updateSemiField('${key}','scoreA',this.value)"`)}
+        <span class="knockout-vs">VS</span>
+        ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
+      </div>
+      <div class="knockout-player-side ${winner && winner.id === match.b?.id ? 'winner-side' : ''}">
+        <span class="knockout-player-logo">${match.b ? clubLogoHtml(match.b.club, 'club-logo-lg') : ''}</span>
+        <strong>${match.b ? coloredNameHtml(match.b.name, "", true) : "—"}</strong>
+        <small>${match.b?.club ? escapeHtml(match.b.club) : ''}</small>
+      </div>
     </div>
     ${penHtml}
+    ${winner ? `<div class="knockout-winner-strip"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>المتأهل: ${coloredNameHtml(winner.name)}</div>` : ""}
   </div>`;
 }
 
@@ -3762,48 +3802,80 @@ function cupStageHtml() {
 function knockoutStageHtml() {
   const cur = appState.current;
   const semis = cur.semis;
-  // "Complete" means each semi has an actual resolved winner — either a
-  // clear scoreline, or (on a draw) a decided penalty shootout. Just having
-  // scores entered isn't enough if they're still level with no shootout
-  // winner yet, otherwise the final would open with an undecided semi-finalist.
-  // When there's no semi-final stage at all (the exactly-4-players direct
-  // path), the final is already seeded directly, so this is trivially true.
   const semisComplete = semis ? (!!resolveKnockoutWinner(semis.m1) && !!resolveKnockoutWinner(semis.m2)) : true;
   const final = cur.final;
   const champion = final ? resolveKnockoutWinner(final) : null;
+  const semiDoneCount = semis ? [semis.m1, semis.m2].filter(m => !!resolveKnockoutWinner(m)).length : 2;
+  const phaseProgress = champion ? 100 : final ? 72 : semis ? Math.round((semiDoneCount / 2) * 55) : 62;
 
   let finalHtml = "";
   if (!final) {
-    finalHtml = `<button class="cta-btn" ${!semisComplete ? "disabled" : ""} onclick="goToFinal()">الانتقال للنهائي ←</button>`;
+    finalHtml = `
+      <div class="knockout-next-panel ${semisComplete ? 'ready' : ''}">
+        <div><strong>${semisComplete ? 'اكتمل نصف النهائي' : 'بانتظار حسم نصف النهائي'}</strong>
+        <span>${semisComplete ? 'المتأهلان جاهزان للنهائي الكبير.' : 'أدخل نتيجة المباراتين لتحديد طرفي النهائي.'}</span></div>
+        <button class="cta-btn knockout-next-btn" ${!semisComplete ? "disabled" : ""} onclick="goToFinal()">الانتقال للنهائي ←</button>
+      </div>`;
   } else {
     const finalPenHtml = penaltyShootoutHtml(final, (field) => `onchange="updateFinalField('${field}',this.value)"`);
-    finalHtml = `<div class="final-box">
-      <h3 class="group-title">النهائي الكبير</h3>
-      <div class="match-row">
-        <span class="match-name">${coloredNameHtml(final.a.name, "", true)}</span>
-        ${scoreSelectHtml(final.scoreA, `onchange="updateFinalField('scoreA',this.value)"`)}
-        <span class="vs">–</span>
-        ${scoreSelectHtml(final.scoreB, `onchange="updateFinalField('scoreB',this.value)"`)}
-        <span class="match-name">${coloredNameHtml(final.b.name, "", true)}</span>
+    finalHtml = `<div class="final-box premium-final-box ${champion ? 'resolved' : ''}">
+      <div class="final-stage-label"><span class="inline-ui-icon ui-trophy" aria-hidden="true"></span>النهائي الكبير</div>
+      <div class="final-stage-subtitle">المباراة الحاسمة لتحديد بطل ${escapeHtml(cur.name)}</div>
+      <div class="knockout-versus final-versus">
+        <div class="knockout-player-side ${champion && champion.id === final.a?.id ? 'winner-side' : ''}">
+          <span class="knockout-player-logo final-logo">${clubLogoHtml(final.a.club, 'club-logo-lg')}</span>
+          <strong>${coloredNameHtml(final.a.name, "", true)}</strong>
+          <small>${escapeHtml(final.a.club || '')}</small>
+        </div>
+        <div class="knockout-score-core final-score-core">
+          ${scoreSelectHtml(final.scoreA, `onchange="updateFinalField('scoreA',this.value)"`)}
+          <span class="knockout-vs">VS</span>
+          ${scoreSelectHtml(final.scoreB, `onchange="updateFinalField('scoreB',this.value)"`)}
+        </div>
+        <div class="knockout-player-side ${champion && champion.id === final.b?.id ? 'winner-side' : ''}">
+          <span class="knockout-player-logo final-logo">${clubLogoHtml(final.b.club, 'club-logo-lg')}</span>
+          <strong>${coloredNameHtml(final.b.name, "", true)}</strong>
+          <small>${escapeHtml(final.b.club || '')}</small>
+        </div>
       </div>
       ${finalPenHtml}
       ${champion ? `
-        <div class="champion-banner">بطل ${escapeHtml(cur.name)}: ${coloredNameHtml(champion.name)}</div>
-        <button class="cta-btn" onclick="finishKnockout()">حفظ النتيجة النهائية وأرشفة البطولة ←</button>
+        <div class="premium-champion-panel">
+          <span class="champion-mini-crown" aria-hidden="true"></span>
+          <div><small>بطل ${escapeHtml(cur.name)}</small><strong>${coloredNameHtml(champion.name)}</strong></div>
+        </div>
+        <button class="cta-btn archive-final-btn" onclick="finishKnockout()">حفظ النتيجة وأرشفة البطولة ←</button>
       ` : ""}
     </div>`;
   }
 
   const semisSectionHtml = semis
-    ? `<div class="two-col">
+    ? `<div class="two-col knockout-semis-grid">
       ${semiPanelHtml("نصف النهائي 1", semis.m1, "m1")}
       ${semiPanelHtml("نصف النهائي 2", semis.m2, "m2")}
     </div>`
-    : `<p class="hint">4 مشاركين بالضبط — الأول والثاني بالترتيب العام تأهلوا مباشرة للنهائي بدون نصف نهائي.</p>`;
+    : `<div class="direct-final-note"><span class="inline-ui-icon ui-success" aria-hidden="true"></span><div><strong>تأهل مباشر للنهائي</strong><span>لوجود 4 مشاركين فقط، الأول والثاني في الترتيب تأهلا مباشرة بدون نصف نهائي.</span></div></div>`;
 
-  return `<div class="card theme-knockout">
-    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-knockout" aria-hidden="true"></span>الأدوار الإقصائية</div>
+  return `<div class="card theme-knockout knockout-page-card">
+    <div class="knockout-hero">
+      <div>
+        <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
+        <div class="section-icon-title"><span class="icon ui-icon ui-knockout" aria-hidden="true"></span>الأدوار الإقصائية</div>
+        <p class="hint knockout-hero-hint">مباراة واحدة تفصل كل لاعب عن الخروج. أي تعادل يُحسم بركلات الترجيح.</p>
+      </div>
+      <div class="knockout-progress-orb" style="--ko-progress:${phaseProgress}">
+        <strong>${phaseProgress}%</strong><span>المرحلة</span>
+      </div>
+    </div>
+
+    <div class="knockout-path">
+      <div class="path-step active"><span>1</span><strong>نصف النهائي</strong></div>
+      <i></i>
+      <div class="path-step ${final ? 'active' : ''}"><span>2</span><strong>النهائي</strong></div>
+      <i></i>
+      <div class="path-step ${champion ? 'active champion' : ''}"><span>3</span><strong>البطل</strong></div>
+    </div>
+
     ${semisSectionHtml}
     ${finalHtml}
   </div>`;
@@ -4472,6 +4544,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=10"></script>
+<script src="theme-v2.js?v=11"></script>
 </body>
 </html>

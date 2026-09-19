@@ -1232,7 +1232,7 @@ function coloredNameHtml(name, extraClass, hideNickname) {
 function clubLogoHtml(clubName, sizeClass) {
   const src = CLUB_LOGOS[clubName];
   if (!src) return "";
-  return `<img src="${src}" alt="" class="club-logo ${sizeClass || ''}">`;
+  return `<img src="${src}" alt="" data-club="${escapeHtml(clubName)}" class="club-logo ${sizeClass || ''}">`;
 }
 
 // builds a <select> for a 0-15 score dropdown

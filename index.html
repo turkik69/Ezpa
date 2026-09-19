@@ -1871,18 +1871,33 @@ async function pollLoad() {
   try {
     const [data, mem, preds] = await Promise.all([fetchState(), fetchMembers(), fetchPredictions()]);
     if (pendingWrites > 0) return; // a write started while we were fetching, discard this snapshot
+
+    // IMPORTANT: polling runs every 4 seconds, but rebuilding the whole DOM
+    // when nothing changed makes iOS/PWA pages visibly "twitch" like a refresh.
+    // Compare the incoming snapshot first and render only on a real data change.
+    const prevStateJson = JSON.stringify(appState);
+    const prevMembersJson = JSON.stringify(members);
+    const prevPredsJson = JSON.stringify(predictions);
+    const nextStateJson = data ? JSON.stringify(data) : prevStateJson;
+    const nextMembersJson = JSON.stringify(mem);
+    const nextPredsJson = JSON.stringify(preds);
+    const hasRemoteChange =
+      nextStateJson !== prevStateJson ||
+      nextMembersJson !== prevMembersJson ||
+      nextPredsJson !== prevPredsJson;
+
     if (data && !wheelUi.spinning) appState = data;
     members = mem;
     predictions = preds;
-    // Don't tear down and rebuild the DOM while the user has any field
-    // focused (a text input being typed into, or a score dropdown open) —
-    // that would wipe out what they're typing or force-close the dropdown
-    // before they're done. Same idea for the champion celebration: rebuilding
-    // the DOM would swap in a fresh <canvas>, restarting the fireworks from
-    // scratch every 4 seconds instead of letting the one animation play out.
-    // The data above is still updated in memory, so the next render (e.g.
-    // right after they finish typing, or close the celebration) reflects it.
-    if (!isUserInteractingWithInput() && !wheelUi.spinning && !celebration) {
+
+    // Only rebuild when the server actually changed. This preserves live sync
+    // while eliminating the 4-second visual refresh/jitter.
+    if (
+      hasRemoteChange &&
+      !isUserInteractingWithInput() &&
+      !wheelUi.spinning &&
+      !celebration
+    ) {
       render();
     }
     syncBadge.textContent = "متصل ✓ مباشر";

@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=8">
+<link rel="stylesheet" href="theme-v2.css?v=9">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -3312,43 +3312,113 @@ function wheelStageHtml() {
   const halfSize = Math.ceil(players.length / 2);
   const groupA = wheelOrder.slice(0, halfSize);
   const groupB = wheelOrder.slice(halfSize);
-  const colors = ["#C9A24B","#1E3A63","#B8332B","#F2EEE3","#2E5C99","#8A6A2E"];
+  const colors = ["#F7D36B","#2E5C99","#CF4650","#E9EEF5","#34B98A","#9A6FE8","#F39B45","#4CBFE8"];
   const n = remaining.length;
+  const drawnCount = wheelOrder.length;
+  const total = players.length;
+  const progress = total ? Math.round((drawnCount / total) * 100) : 0;
   const wheelComplete = remaining.length === 0 && wheelOrder.length === players.length && players.length > 0;
 
   const labelsHtml = remaining.map((p,i) => {
     const segAngle = 360/n;
     const angle = i*segAngle + segAngle/2;
-    return `<div class="wheel-label" style="transform: rotate(${angle}deg) translate(0,-108px) rotate(${-angle}deg)">${escapeHtml(p.name)}</div>`;
+    return `<div class="wheel-label" style="transform: rotate(${angle}deg) translate(0,-122px) rotate(${-angle}deg)">${escapeHtml(p.name)}</div>`;
   }).join("");
 
-  const groupAHtml = groupA.length === 0 ? `<div class="empty-note">—</div>`
+  const groupAHtml = groupA.length === 0 ? `<div class="draw-empty-slot">بانتظار أول اسم</div>`
     : groupA.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
-  const groupBHtml = groupB.length === 0 ? `<div class="empty-note">—</div>`
+  const groupBHtml = groupB.length === 0 ? `<div class="draw-empty-slot">بانتظار اكتمال المجموعة الأولى</div>`
     : groupB.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
 
-  return `<div class="card theme-gold">
-    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-wheel" aria-hidden="true"></span>القرعة الدوارة</div>
-    <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين. بمجرد ما تكتمل المجموعة الأولى، الباقين ينتقلون تلقائياً للمجموعة الثانية بدون الحاجة لإكمال القرعة للجميع.</p>
-    <div class="wheel-area broadcast-wheel"><div class="wheel-live-strip"><span class="live-dot"></span><span>قرعة البطولة المباشرة</span></div>
-      <div class="wheel-wrap">
-        <div class="pointer">▼</div>
-        <div class="wheel" id="wheelEl" style="transform: rotate(${wheelUi.rotation}deg); background: ${n>0?conicGradient(n,colors):'#0d1f38'}">
-          ${labelsHtml}
+  const lastWinnerCard = wheelUi.lastWinner && !wheelUi.spinning
+    ? `<div class="draw-last-winner">
+        <div class="draw-last-winner-badge">آخر اختيار</div>
+        <div class="draw-last-winner-main">
+          <span class="draw-last-winner-logo">${clubLogoHtml(wheelUi.lastWinner.club, 'club-logo-lg')}</span>
+          <div><strong>${coloredNameHtml(wheelUi.lastWinner.name)}</strong><small>${escapeHtml(wheelUi.lastWinner.club || "")}</small></div>
         </div>
-        <div class="wheel-hub"><span class="wheel-ball-icon" aria-hidden="true"></span></div>
+      </div>`
+    : "";
+
+  return `<div class="card theme-gold wheel-page-card">
+    <div class="wheel-page-header">
+      <div>
+        <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
+        <div class="section-icon-title"><span class="icon ui-icon ui-wheel" aria-hidden="true"></span>القرعة الدوارة</div>
+        <p class="hint wheel-page-hint">اسحب الأسماء بالقرعة حتى تكتمل المجموعة الأولى، وبعدها ينتقل الباقي للمجموعة الثانية تلقائياً.</p>
       </div>
-      <button class="spin-btn" ${wheelUi.spinning || n===0 ? "disabled" : ""} onclick="spinWheel()">
-        ${wheelUi.spinning ? "...تدور" : (n===0 ? "اكتملت القرعة" : "ابدأ الدوران")}
-      </button>
-      ${wheelUi.lastWinner && !wheelUi.spinning ? `<div class="winner-banner">${escapeHtml(wheelUi.lastWinner.name)}</div>` : ""}
+      <div class="draw-progress-orb" style="--draw-progress:${progress}">
+        <strong>${progress}%</strong>
+        <span>مكتمل</span>
+      </div>
     </div>
-    <div class="two-col">
-      <div class="group-box draw-group-card box-a"><h3 class="group-title"><span class="group-letter">A</span>المجموعة الأولى</h3>${groupAHtml}</div>
-      <div class="group-box draw-group-card box-b"><h3 class="group-title"><span class="group-letter">B</span>المجموعة الثانية</h3>${groupBHtml}</div>
+
+    <div class="draw-status-grid">
+      <div class="draw-status-card">
+        <span class="draw-status-icon ui-pending"></span>
+        <div><strong>${remaining.length}</strong><small>متبقّي</small></div>
+      </div>
+      <div class="draw-status-card group-a-status">
+        <span class="draw-status-icon">A</span>
+        <div><strong>${groupA.length}/${halfSize}</strong><small>المجموعة الأولى</small></div>
+      </div>
+      <div class="draw-status-card group-b-status">
+        <span class="draw-status-icon">B</span>
+        <div><strong>${groupB.length}/${Math.max(0,total-halfSize)}</strong><small>المجموعة الثانية</small></div>
+      </div>
+      <div class="draw-status-card">
+        <span class="draw-status-icon ui-drawn"></span>
+        <div><strong>${drawnCount}</strong><small>تم اختيارهم</small></div>
+      </div>
     </div>
-    ${wheelComplete ? `<button class="cta-btn" onclick="proceedToGroups()">الانتقال لجدول المباريات ←</button>` : ""}
+
+    <div class="wheel-area broadcast-wheel premium-wheel-arena">
+      <div class="wheel-live-strip"><span class="live-dot"></span><span>قرعة البطولة المباشرة</span><span class="live-counter">${remaining.length} أسماء متبقية</span></div>
+
+      <div class="wheel-stage">
+        <div class="wheel-stage-ring"></div>
+        <div class="wheel-wrap">
+          <div class="pointer" aria-hidden="true"></div>
+          <div class="wheel" id="wheelEl" style="transform: rotate(${wheelUi.rotation}deg); background: ${n>0?conicGradient(n,colors):'#0d1f38'}">
+            ${labelsHtml}
+          </div>
+          <div class="wheel-hub"><span class="wheel-ball-icon" aria-hidden="true"></span><small>DRAW</small></div>
+        </div>
+      </div>
+
+      <div class="spin-control-zone">
+        <button class="spin-btn premium-spin-btn" ${wheelUi.spinning || n===0 ? "disabled" : ""} onclick="spinWheel()">
+          <span class="spin-button-icon" aria-hidden="true"></span>
+          ${wheelUi.spinning ? "جاري الدوران..." : (n===0 ? "اكتملت القرعة" : "ابدأ الدوران")}
+        </button>
+        <span class="spin-helper">${wheelUi.spinning ? "يتم الآن اختيار الاسم عشوائياً" : n>0 ? "اضغط مرة واحدة لبدء السحب" : "تم توزيع جميع المشاركين"}</span>
+      </div>
+
+      ${lastWinnerCard}
+    </div>
+
+    <div class="draw-groups-header">
+      <div><span class="setup-step">3</span><div><strong>نتيجة القرعة</strong><small>تتحدث مباشرة بعد كل سحبة</small></div></div>
+      <span class="setup-count">${drawnCount}/${total}</span>
+    </div>
+
+    <div class="two-col draw-groups-grid">
+      <div class="group-box draw-group-card box-a premium-draw-group">
+        <h3 class="group-title"><span class="group-letter">A</span><span>المجموعة الأولى</span><em>${groupA.length}</em></h3>
+        <div class="draw-group-list">${groupAHtml}</div>
+      </div>
+      <div class="group-box draw-group-card box-b premium-draw-group">
+        <h3 class="group-title"><span class="group-letter">B</span><span>المجموعة الثانية</span><em>${groupB.length}</em></h3>
+        <div class="draw-group-list">${groupBHtml}</div>
+      </div>
+    </div>
+
+    ${wheelComplete ? `
+      <div class="draw-complete-panel">
+        <div class="draw-complete-icon"><span class="inline-ui-icon ui-success" aria-hidden="true"></span></div>
+        <div class="draw-complete-copy"><strong>اكتملت القرعة</strong><span>المجموعتان جاهزتان، تقدر تنتقل الآن لجدول المباريات.</span></div>
+        <button class="cta-btn draw-next-btn" onclick="proceedToGroups()">الانتقال لجدول المباريات ←</button>
+      </div>` : ""}
     ${!wheelComplete && remaining.length === 0 && cur.seededRunnerUp ? `<div class="empty-note">جارِ تثبيت الوصيف بالمجموعة الثانية...</div>` : ""}
   </div>`;
 }
@@ -4299,6 +4369,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=8"></script>
+<script src="theme-v2.js?v=9"></script>
 </body>
 </html>

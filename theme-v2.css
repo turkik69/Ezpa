@@ -384,7 +384,7 @@ table.score-table td:last-child{border-radius:9px 0 0 9px}
 
 /* Page entrance, respectful of reduced motion */
 @keyframes ezbaIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-main>.card,main>.sidebar-card{animation:ezbaIn .28s ease both}
+main>.card,main>.sidebar-card{animation:none!important}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}
 }
@@ -462,3 +462,39 @@ body{
     font-size:13px!important;
   }
 }
+
+
+/* Stable navigation/icons: rendered in CSS from the first paint, so changing
+   tabs or background data refreshes no longer causes a second layout pass. */
+.tab-btn::before{
+  content:"";
+  width:18px;height:18px;min-width:18px;
+  display:inline-block;
+  background:currentColor;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-position:center;mask-position:center;
+  -webkit-mask-size:contain;mask-size:contain;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.18));
+}
+.tab-btn:nth-child(1)::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+}
+.tab-btn:nth-child(2)::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 21h8M12 17v4M7 4h10v3a5 5 0 0 1-10 0V4M7 6H4v1a4 4 0 0 0 4 4M17 6h3v1a4 4 0 0 1-4 4'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 21h8M12 17v4M7 4h10v3a5 5 0 0 1-10 0V4M7 6H4v1a4 4 0 0 0 4 4M17 6h3v1a4 4 0 0 1-4 4'/%3E%3C/svg%3E");
+}
+.tab-btn:nth-child(3)::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2'/%3E%3C/svg%3E");
+}
+.tab-btn:nth-child(4)::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M8.5 8.5 4 4m11.5 4.5L20 4M7 14l-3 3m13-3 3 3M12 3v4m0 10v4M7.8 12h8.4'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M8.5 8.5 4 4m11.5 4.5L20 4M7 14l-3 3m13-3 3 3M12 3v4m0 10v4M7.8 12h8.4'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E");
+}
+/* Hide any older injected SVGs that might survive from a cached JS file. */
+.tab-btn>svg{display:none!important}
+
+/* Avoid tiny width/height oscillations when content updates. */
+#app{contain:layout style}
+.layout,main,.card,.sidebar-card,.tab-row{transform:translateZ(0)}

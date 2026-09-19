@@ -2729,3 +2729,63 @@ table.score-table{min-width:500px!important}
     font-size:7px!important;
   }
 }
+
+
+/* ===== Match schedules side-by-side + stacked standings v17 ===== */
+.premium-groups-grid{
+  grid-template-columns:1fr 1fr!important;
+  gap:10px!important;
+}
+.premium-groups-grid .premium-group-panel{
+  width:auto!important;
+  max-width:none!important;
+}
+.stacked-standings{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin-top:14px;
+}
+.standings-only-card{
+  width:100%!important;
+  max-width:none!important;
+  padding:12px!important;
+  border-radius:17px!important;
+}
+.standings-only-title{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-bottom:8px;
+}
+.standings-only-title>div{display:flex;flex-direction:column}
+.standings-only-title strong{font-size:11px;color:#eaf1f8}
+.standings-only-title small{font-size:7.5px;color:#7f91a7;margin-top:2px}
+.standings-only-card .score-table-scroll{
+  width:100%!important;
+  overflow-x:visible!important;
+}
+.standings-only-card table.score-table{
+  width:100%!important;
+  min-width:0!important;
+  table-layout:fixed!important;
+}
+.standings-only-card table.score-table th:nth-child(1),
+.standings-only-card table.score-table td:nth-child(1){width:6%!important}
+.standings-only-card table.score-table th:nth-child(2),
+.standings-only-card table.score-table td:nth-child(2){width:28%!important}
+.standings-only-card table.score-table th:nth-child(n+3),
+.standings-only-card table.score-table td:nth-child(n+3){width:8.25%!important}
+@media(max-width:600px){
+  .premium-groups-grid{grid-template-columns:1fr 1fr!important;gap:6px!important}
+  .premium-groups-grid .premium-group-panel{padding:7px!important}
+  .stacked-standings{gap:9px;margin-top:10px}
+  .standings-only-card{padding:8px!important}
+  .standings-only-card table.score-table{font-size:8.3px!important}
+  .standings-only-card table.score-table th{font-size:7px!important;padding:5px 0!important}
+  .standings-only-card table.score-table td{padding:6px 0!important}
+  .standings-only-card .table-player-identity{min-width:0!important;gap:4px!important}
+  .standings-only-card .table-player-identity .club-logo{width:15px!important;height:15px!important}
+  .standings-only-card .table-rank{width:17px!important;height:17px!important;font-size:7px!important;margin:auto}
+  .standings-only-card .pts-pill{min-width:21px!important;height:19px!important;font-size:7.5px!important}
+}

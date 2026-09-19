@@ -892,3 +892,37 @@ header,.header-crest,.header-crest img{
   content:"2";position:absolute;inset:0;display:grid;place-items:center;
   color:#314159;font-weight:900;font-size:13px;text-shadow:0 1px rgba(255,255,255,.7);
 }
+
+
+/* Club crest correction: preserve original pixels and colors.
+   White raster background is removed by theme-v2.js from edge-connected white only. */
+.club-logo{
+  width:34px!important;
+  height:34px!important;
+  padding:0!important;
+  margin:0!important;
+  border:0!important;
+  outline:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  object-fit:contain!important;
+  box-shadow:none!important;
+  filter:drop-shadow(0 5px 5px rgba(0,0,0,.34))!important;
+  opacity:1!important;
+  mix-blend-mode:normal!important;
+  image-rendering:auto!important;
+}
+.club-logo.club-logo-sm{width:26px!important;height:26px!important}
+.club-logo.club-logo-lg{width:44px!important;height:44px!important}
+.club-logo[data-club="العين"]{
+  filter:none!important;
+  opacity:1!important;
+  mix-blend-mode:normal!important;
+  -webkit-filter:none!important;
+}
+.member-row:hover .club-logo{
+  filter:drop-shadow(0 5px 5px rgba(0,0,0,.34))!important;
+}
+.member-row:hover .club-logo[data-club="العين"]{
+  filter:none!important;
+}

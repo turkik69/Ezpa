@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=7">
+<link rel="stylesheet" href="theme-v2.css?v=8">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -3175,56 +3175,131 @@ function registerStageHtml() {
   const confirmed = members.filter(m => m.confirmed);
   const groupMode = window.__selectedGroupMode || "two";
   const minNeeded = groupMode === "two" ? 3 : 2;
+  const ready = confirmed.length >= minNeeded;
 
   const confirmedListHtml = confirmed.length === 0
-    ? `<div class="empty-note">ما فيه أحد مؤكد بعد. روح خانة "قائمة الأعضاء" وأكد حضورك أول.</div>`
+    ? `<div class="empty-note tournament-empty">ما فيه أحد مؤكد بعد. ارجع لقائمة الأعضاء وأكد الحضور أولاً.</div>`
     : confirmed.map((p,i) => `
-        <div class="player-chip">
-          <span class="player-num">${i+1}</span>
-          <span style="flex:1; display:flex; align-items:center; gap:6px;">${coloredNameHtml(p.name)} <span style="opacity:0.55; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club)}</span></span>
+        <div class="tournament-player-card">
+          <span class="tournament-player-num">${i+1}</span>
+          <span class="tournament-player-logo">${clubLogoHtml(p.club, 'club-logo-lg')}</span>
+          <span class="tournament-player-copy">
+            <strong>${coloredNameHtml(p.name)}</strong>
+            <small>${escapeHtml(p.club)}</small>
+          </span>
+          <span class="ready-chip">جاهز</span>
         </div>`).join("");
 
-  // Seeding box: only relevant in two-group mode, and only if the last
-  // champion and/or runner-up actually confirmed attendance today.
   const championConfirmed = appState.lastChampion && confirmed.some(m => m.id === appState.lastChampion.id);
   const runnerUpConfirmed = appState.lastRunnerUp && confirmed.some(m => m.id === appState.lastRunnerUp.id);
   const useSeeding = window.__useSeeding !== false;
   let seedingBoxHtml = "";
   if (groupMode === "two" && (championConfirmed || runnerUpConfirmed)) {
     const parts = [];
-    if (championConfirmed) parts.push(`بطل آخر بطولة (${escapeHtml(appState.lastChampion.name)}) ← المجموعة الأولى`);
-    if (runnerUpConfirmed) parts.push(`وصيف آخر بطولة (${escapeHtml(appState.lastRunnerUp.name)}) ← المجموعة الثانية`);
+    if (championConfirmed) parts.push(`البطل السابق: ${escapeHtml(appState.lastChampion.name)} → المجموعة A`);
+    if (runnerUpConfirmed) parts.push(`الوصيف السابق: ${escapeHtml(appState.lastRunnerUp.name)} → المجموعة B`);
     seedingBoxHtml = `
-      <div class="add-member-box">
-        <div class="add-member-label">تخصيص البطل والوصيف تلقائياً</div>
-        <p class="hint" style="margin-bottom:10px;">${parts.join(" — ")}. باقي المشاركين يدخلون القرعة الدوارة عادي.</p>
-        <label class="checkbox-row">
+      <div class="seeding-card">
+        <div class="seeding-icon"><span class="inline-ui-icon ui-trophy" aria-hidden="true"></span></div>
+        <div class="seeding-copy">
+          <strong>توزيع البطل والوصيف تلقائياً</strong>
+          <span>${parts.join(" · ")}</span>
+        </div>
+        <label class="seeding-switch">
           <input type="checkbox" id="seedingToggle" ${useSeeding ? "checked" : ""} onchange="setUseSeeding(this.checked)">
-          فعّل هذا التخصيص لهذه البطولة (بدل ما يدخلوا القرعة زي البقية)
+          <span></span>
         </label>
       </div>`;
   }
 
-  return `<div class="card theme-gold">
-    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>البطولة القادمة: ${upcomingName}</div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-start" aria-hidden="true"></span>بدء البطولة</div>
-    <p class="hint">المشاركون هنا هم فقط من أكّدوا حضورهم من "قائمة الأعضاء". تقدرون تلعبون أكثر من بطولة بنفس اليوم بنفس المؤكدين — التأكيدات ما تتصفر إلا لما تضغطون "إنهاء يوم اللعب" من صفحة الأعضاء.</p>
+  const modeHelp = groupMode === "two"
+    ? "تقسيم المشاركين إلى مجموعتين عبر القرعة الدوارة، ثم يتأهل الأفضل للإقصائيات."
+    : groupMode === "one"
+      ? "جميع المشاركين في مجموعة واحدة بنظام الكل ضد الكل، ثم يتحدد التأهل حسب الترتيب."
+      : "خروج مغلوب من أول مباراة، مع باي تلقائي عند الحاجة.";
 
-    <div class="player-grid">${confirmedListHtml}</div>
-    <div class="count-badge">عدد المؤكدين: ${confirmed.length}</div>
-
-    <div class="mode-switch">
-      <button class="mode-btn ${groupMode==='two'?'active':''}" onclick="setGroupMode('two')">مجموعتين (قرعة دوارة)</button>
-      <button class="mode-btn ${groupMode==='one'?'active':''}" onclick="setGroupMode('one')">مجموعة واحدة (بدون قرعة)</button>
-      <button class="mode-btn ${groupMode==='cup'?'active':''}" onclick="setGroupMode('cup')"><span class="inline-ui-icon ui-knockout" aria-hidden="true"></span>كأس خروج المغلوب</button>
+  return `<div class="card theme-gold tournament-setup-card">
+    <div class="tournament-setup-hero">
+      <div class="tournament-setup-copy">
+        <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>البطولة القادمة</div>
+        <h2 class="tournament-name-premium">${escapeHtml(upcomingName)}</h2>
+        <p class="hint tournament-hero-hint">اختر نظام البطولة ثم ابدأ. المشاركون أدناه هم فقط من أكدوا حضورهم.</p>
+      </div>
+      <div class="tournament-ready-orb ${ready ? "ready" : ""}">
+        <strong>${confirmed.length}</strong>
+        <span>مشارك</span>
+      </div>
     </div>
-    ${groupMode === 'cup' ? `<p class="hint">كل مباراة إقصائية من الجولة الأولى — خسرت طلعت! لو العدد فردي أو مو قوة 2، بعض اللاعبين ياخذون "باي" مباشر بالجولة الأولى بشكل عشوائي وعادل.</p>` : ""}
+
+    <div class="tournament-status-row">
+      <div class="tournament-status-item">
+        <span class="status-mini-icon ui-members-mini"></span>
+        <div><strong>${confirmed.length}</strong><small>المؤكدون</small></div>
+      </div>
+      <div class="tournament-status-item">
+        <span class="status-mini-icon ui-mode-mini"></span>
+        <div><strong>${groupMode === "two" ? "2" : groupMode === "one" ? "1" : "KO"}</strong><small>نظام البطولة</small></div>
+      </div>
+      <div class="tournament-status-item ${ready ? "is-ready" : "not-ready"}">
+        <span class="status-mini-icon ui-ready-mini"></span>
+        <div><strong>${ready ? "جاهزة" : "ناقص"}</strong><small>${ready ? "يمكن البدء" : `الحد الأدنى ${minNeeded}`}</small></div>
+      </div>
+    </div>
+
+    <div class="setup-section-head">
+      <div>
+        <span class="setup-step">1</span>
+        <div><strong>المشاركون</strong><small>الأعضاء المؤكدون لهذه البطولة</small></div>
+      </div>
+      <span class="setup-count">${confirmed.length}</span>
+    </div>
+    <div class="tournament-player-grid">${confirmedListHtml}</div>
+
+    <div class="setup-section-head mode-head">
+      <div>
+        <span class="setup-step">2</span>
+        <div><strong>اختر نظام البطولة</strong><small>يمكن تغييره قبل البدء</small></div>
+      </div>
+    </div>
+
+    <div class="premium-mode-switch">
+      <button class="premium-mode-card ${groupMode==='two'?'active':''}" onclick="setGroupMode('two')">
+        <span class="mode-card-icon ui-two-groups"></span>
+        <strong>مجموعتين</strong>
+        <small>قرعة دوارة + إقصائيات</small>
+        <span class="mode-selected-mark"></span>
+      </button>
+      <button class="premium-mode-card ${groupMode==='one'?'active':''}" onclick="setGroupMode('one')">
+        <span class="mode-card-icon ui-one-group"></span>
+        <strong>مجموعة واحدة</strong>
+        <small>الكل ضد الكل</small>
+        <span class="mode-selected-mark"></span>
+      </button>
+      <button class="premium-mode-card ${groupMode==='cup'?'active':''}" onclick="setGroupMode('cup')">
+        <span class="mode-card-icon ui-cup-mode"></span>
+        <strong>خروج المغلوب</strong>
+        <small>مباشر من أول مباراة</small>
+        <span class="mode-selected-mark"></span>
+      </button>
+    </div>
+
+    <div class="mode-explainer">
+      <span class="mode-explainer-icon">i</span>
+      <span>${modeHelp}</span>
+    </div>
 
     ${seedingBoxHtml}
 
-    <button class="cta-btn" ${confirmed.length < minNeeded ? "disabled" : ""} onclick="startNewTournament()">
-      ${groupMode==='two' ? 'تجهيز القرعة الدوارة ←' : groupMode==='cup' ? 'بدء كأس خروج المغلوب ←' : 'إنشاء جدول المباريات ←'}
-    </button>
+    <div class="setup-start-panel">
+      <div class="setup-start-copy">
+        <strong>${ready ? "كل شيء جاهز" : "أكمل عدد المشاركين"}</strong>
+        <span>${ready ? "ابدأ البطولة بالنظام المختار" : `تحتاج ${Math.max(0,minNeeded-confirmed.length)} مشارك إضافي على الأقل`}</span>
+      </div>
+      <button class="cta-btn tournament-start-btn" ${!ready ? "disabled" : ""} onclick="startNewTournament()">
+        <span class="start-btn-icon"></span>
+        ${groupMode==='two' ? 'الانتقال للقرعة' : groupMode==='cup' ? 'بدء خروج المغلوب' : 'إنشاء جدول المباريات'}
+      </button>
+    </div>
   </div>`;
 }
 
@@ -4224,6 +4299,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=7"></script>
+<script src="theme-v2.js?v=8"></script>
 </body>
 </html>

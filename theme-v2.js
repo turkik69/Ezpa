@@ -26,6 +26,65 @@
     // Keeping this no-op avoids a second DOM mutation/layout pass.
   }
 
+  const cleanedLogoCache = new Map();
+
+  function cleanClubLogo(img) {
+    if (!img || img.dataset.cleanedLogo === '1') return;
+    const src = img.getAttribute('src') || '';
+    if (!src.startsWith('data:image/')) {
+      img.dataset.cleanedLogo = '1';
+      return;
+    }
+    const apply = () => {
+      try {
+        if (cleanedLogoCache.has(src)) {
+          img.src = cleanedLogoCache.get(src);
+          img.dataset.cleanedLogo = '1';
+          return;
+        }
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        const image = ctx.getImageData(0, 0, w, h);
+        const d = image.data;
+        const seen = new Uint8Array(w * h);
+        const stack = [];
+        const isBg = (p) => {
+          const i = p * 4;
+          const a = d[i + 3];
+          if (a < 8) return true;
+          const r = d[i], g = d[i + 1], b = d[i + 2];
+          return r >= 246 && g >= 246 && b >= 246 && Math.max(r,g,b)-Math.min(r,g,b) <= 7;
+        };
+        const push = (x,y) => {
+          if (x < 0 || x >= w || y < 0 || y >= h) return;
+          const p = y*w+x;
+          if (seen[p] || !isBg(p)) return;
+          seen[p] = 1; stack.push(p);
+        };
+        for (let x=0;x<w;x++){ push(x,0); push(x,h-1); }
+        for (let y=0;y<h;y++){ push(0,y); push(w-1,y); }
+        while (stack.length) {
+          const p = stack.pop(), x=p%w, y=(p/w)|0, i=p*4;
+          d[i+3]=0;
+          push(x-1,y); push(x+1,y); push(x,y-1); push(x,y+1);
+        }
+        ctx.putImageData(image,0,0);
+        const cleaned = canvas.toDataURL('image/png');
+        cleanedLogoCache.set(src,cleaned);
+        img.src = cleaned;
+        img.dataset.cleanedLogo = '1';
+      } catch (e) {
+        img.dataset.cleanedLogo = '1';
+      }
+    };
+    if (img.complete && img.naturalWidth) apply();
+    else img.addEventListener('load', apply, { once:true });
+  }
+
   function enhanceA11y() {
     document.querySelectorAll('button').forEach(b => {
       if (!b.getAttribute('type')) b.setAttribute('type','button');
@@ -33,6 +92,7 @@
     document.querySelectorAll('.club-logo').forEach(img => {
       img.loading = 'lazy';
       img.decoding = 'async';
+      cleanClubLogo(img);
     });
   }
 

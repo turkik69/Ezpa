@@ -8,9 +8,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>دوري أبطال العزبة</title>
-<link rel="icon" type="image/png" href="icon-192.png?v=4">
-<link rel="apple-touch-icon" href="icon-192.png?v=4">
-<link rel="manifest" href="manifest.json?v=6">
+<link rel="icon" type="image/png" href="icon-192.png?v=14">
+<link rel="apple-touch-icon" href="icon-192.png?v=14">
+<link rel="manifest" href="manifest.json?v=14">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=13">
+<link rel="stylesheet" href="theme-v2.css?v=14">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -979,7 +979,7 @@ async function sendPushNotification(title, body, memberIds) {
         apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "/" }),
+      body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "./index.html" }),
     });
   } catch (e) {
     // notifications are a nice-to-have; never let a failure here break the
@@ -1000,7 +1000,7 @@ async function sendPushNotificationOrThrow(title, body, memberIds, imageUrl) {
       apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "/", image: imageUrl || null }),
+    body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "./index.html", image: imageUrl || null }),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -3778,8 +3778,8 @@ function cupStageHtml() {
   const { a: finalA, b: finalB } = getCupMatchPlayers(bracket, finalMatch);
   const finalWinner = resolveKnockoutWinner({ ...finalMatch, a: finalA, b: finalB });
 
-  const sideAHtml = cupBracketSideHtml(bracket, "A", "الجهة الأولى 🟢");
-  const sideBHtml = cupBracketSideHtml(bracket, "B", "الجهة الثانية 🔵");
+  const sideAHtml = cupBracketSideHtml(bracket, "A", '<span class="group-letter">A</span> الجهة الأولى');
+  const sideBHtml = cupBracketSideHtml(bracket, "B", '<span class="group-letter">B</span> الجهة الثانية');
   const twoColHtml = (sideAHtml || sideBHtml) ? `<div class="two-col">${sideAHtml}${sideBHtml}</div>` : "";
   const finalBoxHtml = `<div class="group-box box-final">
     <h3 class="group-title"><span class="inline-ui-icon ui-trophy" aria-hidden="true"></span>النهائي</h3>
@@ -4706,6 +4706,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=13"></script>
+<script src="theme-v2.js?v=14"></script>
 </body>
 </html>

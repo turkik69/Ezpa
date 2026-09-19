@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=11">
+<link rel="stylesheet" href="theme-v2.css?v=12">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -4038,14 +4038,6 @@ function tournamentFlowHtml() {
 
 // ============ Stats panel ============
 function statBlockHtml(title, icon, rows, valueKey, suffix) {
-  const rowsHtml = rows.length === 0
-    ? `<div class="empty-note-sm">لا توجد بيانات بعد</div>`
-    : rows.map((r,i) => `
-        <div class="stat-row">
-          <span class="stat-rank">${i+1}</span>
-          <span style="flex:1">${coloredNameHtml(r.name)}</span>
-          <span class="stat-value">${r[valueKey]} ${suffix}</span>
-        </div>`).join("");
   const iconKey =
     title.includes("تتويج") ? "crown" :
     title.includes("تسجيلاً") ? "ball" :
@@ -4054,49 +4046,163 @@ function statBlockHtml(title, icon, rows, valueKey, suffix) {
     title.includes("النهائي") ? "final" :
     title.includes("مجموعته") ? "down" :
     title.includes("توقعات") ? "crystal" : "chart";
-  return `<div class="stat-block"><div class="stat-block-title"><span class="stat-title-icon icon-${iconKey}"></span><span>${title}</span></div>${rowsHtml}</div>`;
+
+  const rowsHtml = rows.length === 0
+    ? `<div class="empty-note-sm premium-stat-empty">لا توجد بيانات بعد</div>`
+    : rows.map((r,i) => {
+        const member = findMemberByName(r.name);
+        const crest = member ? clubLogoHtml(member.club, 'club-logo-sm') : "";
+        const podiumClass = i === 0 ? "podium-gold" : i === 1 ? "podium-silver" : i === 2 ? "podium-bronze" : "";
+        return `
+        <div class="stat-row premium-stat-row ${podiumClass}">
+          <span class="stat-rank">${i+1}</span>
+          <span class="stat-player-cell">${crest}<span>${coloredNameHtml(r.name)}</span></span>
+          <span class="stat-value">${r[valueKey]} <small>${suffix}</small></span>
+        </div>`;
+      }).join("");
+
+  return `<div class="stat-block premium-stat-block">
+    <div class="stat-block-title">
+      <span class="stat-title-icon icon-${iconKey}"></span>
+      <span>${title}</span>
+    </div>
+    <div class="stat-block-body">${rowsHtml}</div>
+  </div>`;
 }
 
 function statsPanelHtml(archive, compact, labelOverride) {
-  const label = labelOverride || { title: "التصنيفات التاريخية", icon: "📊", themeClass: "theme-stats", emptyNote: "ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً." };
-  const wrapClass = compact ? "sidebar-card" : `card ${label.themeClass}`;
+  const label = labelOverride || {
+    title: "التصنيفات التاريخية",
+    iconKey: "stats",
+    themeClass: "theme-stats",
+    emptyNote: "ما فيه بطولات مكتملة بعد. أول بطولة تخلص بتبدأ الإحصائيات تتحدث تلقائياً."
+  };
+  const iconKey = label.iconKey || (label.title.includes("ودية") ? "friendly" : "stats");
+  const wrapClass = compact ? "sidebar-card stats-sidebar-card" : `card ${label.themeClass} stats-page-card`;
+
   if (!archive || archive.length === 0) {
     return `<div class="${wrapClass}">
-      <div class="section-icon-title"><span class="icon">${label.icon}</span>${label.title}</div>
-      <div class="empty-note">${label.emptyNote}</div>
+      <div class="section-icon-title"><span class="icon ui-icon ${iconKey === 'friendly' ? 'ui-friendly' : 'ui-stats'}" aria-hidden="true"></span>${label.title}</div>
+      <div class="empty-note premium-stats-empty">${label.emptyNote}</div>
     </div>`;
   }
+
   const stats = computeHistoricalStats(archive);
   const predictionLeaderboard = computePredictionLeaderboard(archive, predictions);
-  let html = `<div class="${wrapClass}">
-    ${compact ? `<h3 class="group-title">${label.title} (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">${label.icon}</span>${label.title} (${archive.length} بطولة مكتملة)</div>`}
-    ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()"><span class="inline-ui-icon ui-file" aria-hidden="true"></span>تصدير التصنيفات والأرشيف PDF</button>` : ""}
-    ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
-    ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
-    ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
-    ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
-    ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
-    ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة عدم صعود")}
-    ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard,"predictionPoints","نقطة")}`;
+  const champions = archive.filter(t => t.champion).length;
+  const totalGoals = Object.values(stats.mostGoalsScored || []).reduce((sum, r) => sum + (r.goalsScored || 0), 0);
+  const latest = archive[archive.length - 1];
+  const topChampion = stats.mostTitles?.[0] || null;
+
+  let html = `<div class="${wrapClass}">`;
+
   if (!compact) {
-    html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon ui-icon ui-archive" aria-hidden="true"></span>أرشيف البطولات</div>
-      <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
-    html += archive.slice().reverse().map(t => {
-      const tPreds = predictions.filter(p => p.tournament_id === t.id);
-      const predRecap = tPreds.length > 0
-        ? `<div class="prediction-row-picks" style="margin-top:4px;"><span class="inline-ui-icon ui-predictions" aria-hidden="true"></span>${tPreds.map(p => {
-            const { points } = computePredictionPoints(t, p);
-            return `${escapeHtml(p.member_name)} (${points})`;
-          }).join("، ")}</div>`
-        : "";
-      return `
-      <div class="archive-row" style="display:flex; align-items:center; gap:10px;">
-        <span style="flex:1"><strong>${escapeHtml(t.name)}</strong> — بطل: ${t.champion ? coloredNameHtml(t.champion) : "—"} | وصيف: ${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}${predRecap}</span>
-        <button class="cta-btn danger" style="width:auto; margin:0; padding:8px 14px; font-size:12px;" onclick="deleteArchivedTournament('${t.id}')">حذف هذه البطولة</button>
+    html += `
+      <div class="stats-hero">
+        <div class="stats-hero-copy">
+          <div class="section-icon-title"><span class="icon ui-icon ${iconKey === 'friendly' ? 'ui-friendly' : 'ui-stats'}" aria-hidden="true"></span>${label.title}</div>
+          <p class="hint stats-hero-hint">ملخص تاريخ البطولات والأرقام القياسية والأرشيف — يتحدث تلقائياً بعد كل بطولة مكتملة.</p>
+        </div>
+        <div class="stats-trophy-orb">
+          <span class="badge-trophy-3d" aria-hidden="true"></span>
+          <small>${archive.length}</small>
+        </div>
+      </div>
+
+      <div class="stats-summary-grid">
+        <div class="stats-summary-card">
+          <span class="stats-summary-icon ui-tournaments"></span>
+          <div><strong>${archive.length}</strong><small>بطولة مكتملة</small></div>
+        </div>
+        <div class="stats-summary-card">
+          <span class="stats-summary-icon ui-crown-mini"></span>
+          <div><strong>${topChampion ? topChampion.titles : 0}</strong><small>أعلى عدد ألقاب</small></div>
+        </div>
+        <div class="stats-summary-card">
+          <span class="stats-summary-icon ui-final-mini"></span>
+          <div><strong>${champions}</strong><small>نتائج مؤرشفة</small></div>
+        </div>
+        <div class="stats-summary-card">
+          <span class="stats-summary-icon ui-history-mini"></span>
+          <div><strong>${latest ? escapeHtml(latest.name) : "—"}</strong><small>آخر بطولة</small></div>
+        </div>
+      </div>
+
+      ${isAdmin() ? `<button class="cta-btn stats-export-btn" onclick="exportStatsAndArchiveToPdf()"><span class="inline-ui-icon ui-file" aria-hidden="true"></span>تصدير التصنيفات والأرشيف PDF</button>` : ""}
+
+      <div class="stats-section-head">
+        <div><span class="setup-step">1</span><div><strong>التصنيفات والأرقام القياسية</strong><small>أفضل النتائج عبر جميع البطولات المكتملة</small></div></div>
+      </div>
+
+      <div class="stats-grid">
+        ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
+        ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
+        ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
+        ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
+        ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
+        ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة")}
+        ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard,"predictionPoints","نقطة")}
       </div>
     `;
-    }).join("");
+  } else {
+    html += `
+      <div class="stats-sidebar-head">
+        <span class="stat-title-icon icon-chart"></span>
+        <div><strong>${label.title}</strong><small>${archive.length} بطولة</small></div>
+      </div>
+      ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles.slice(0,3),"titles","لقب")}
+      ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored.slice(0,3),"goalsScored","هدف")}
+      ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard.slice(0,3),"predictionPoints","نقطة")}
+    `;
   }
+
+  if (!compact) {
+    html += `
+      <div class="stats-section-head archive-section-head">
+        <div><span class="setup-step">2</span><div><strong>أرشيف البطولات</strong><small>جميع البطولات المكتملة بترتيب الأحدث</small></div></div>
+        <span class="setup-count">${archive.length}</span>
+      </div>
+      <p class="hint archive-help">يمكن للمشرف حذف بطولة مدخلة بالخطأ، وعندها تُعاد حسابات التصنيفات تلقائياً.</p>
+      <div class="premium-archive-list">
+    `;
+
+    html += archive.slice().reverse().map((t,index) => {
+      const tPreds = predictions.filter(p => p.tournament_id === t.id);
+      const predRecap = tPreds.length > 0
+        ? `<div class="archive-predictions"><span class="inline-ui-icon ui-predictions" aria-hidden="true"></span><span>${tPreds.map(p => {
+            const { points } = computePredictionPoints(t, p);
+            return `${escapeHtml(p.member_name)} (${points})`;
+          }).join("، ")}</span></div>`
+        : "";
+
+      const champMember = t.champion ? findMemberByName(t.champion) : null;
+      const runnerMember = t.runnerUp ? findMemberByName(t.runnerUp) : null;
+      const champLogo = champMember ? clubLogoHtml(champMember.club, 'club-logo-lg') : "";
+      const runnerLogo = runnerMember ? clubLogoHtml(runnerMember.club, 'club-logo-sm') : "";
+
+      return `
+        <div class="archive-row premium-archive-card">
+          <div class="archive-index">${archive.length-index}</div>
+          <div class="archive-main">
+            <div class="archive-title-row">
+              <strong>${escapeHtml(t.name)}</strong>
+              <span class="archive-status">مكتملة</span>
+            </div>
+            <div class="archive-podium">
+              <div class="archive-champion">${champLogo}<div><small>البطل</small><strong>${t.champion ? coloredNameHtml(t.champion) : "—"}</strong></div></div>
+              <span class="archive-divider-mini"></span>
+              <div class="archive-runner">${runnerLogo}<div><small>الوصيف</small><strong>${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}</strong></div></div>
+            </div>
+            ${predRecap}
+          </div>
+          ${isAdmin() ? `<button class="archive-delete-btn" onclick="deleteArchivedTournament('${t.id}')" title="حذف البطولة"><span>✕</span></button>` : ""}
+        </div>
+      `;
+    }).join("");
+
+    html += `</div>`;
+  }
+
   html += `</div>`;
   return html;
 }
@@ -4109,7 +4215,7 @@ function friendlyTournamentsPageHtml() {
   const friendlyArchive = appState.archive.filter(t => t.isOfficial === false);
   return statsPanelHtml(friendlyArchive, false, {
     title: "البطولات الودية",
-    icon: "🎉",
+    iconKey: "friendly",
     themeClass: "theme-friendly",
     emptyNote: "ما فيه تجمعات ودية مسجّلة بعد. أي تأكيد حضور بيوم غير الخميس/الجمعة يبدأ بطولة ودية منفصلة تلقائياً.",
   });
@@ -4125,7 +4231,7 @@ function sidebarStatsForCurrentContext() {
   if (isFriendlyLive) {
     const friendlyArchive = appState.archive.filter(t => t.isOfficial === false);
     return statsPanelHtml(friendlyArchive, true, {
-      title: "التصنيفات الودية", icon: "🎉", themeClass: "theme-friendly",
+      title: "التصنيفات الودية", iconKey: "friendly", themeClass: "theme-friendly",
       emptyNote: "ما فيه تجمعات ودية سابقة بعد.",
     });
   }
@@ -4544,6 +4650,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=11"></script>
+<script src="theme-v2.js?v=12"></script>
 </body>
 </html>

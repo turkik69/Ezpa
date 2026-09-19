@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=17">
+<link rel="stylesheet" href="theme-v2.css?v=18">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -2493,7 +2493,7 @@ function proceedToGroups() {
     groupATotalRounds: buildA.totalRounds,
     groupBTotalRounds: buildB.totalRounds,
   });
-  sendPushNotification(`🔮 التوقعات مفتوحة!${cur.isOfficial ? "" : " (ودية)"}`, "اكتملت المجموعات — سجل توقعك لطرفي النهائي والبطل قبل ما تبدأ النتائج");
+
 }
 
 function doUpdateMatchField(which, matchId, field, value) {
@@ -2991,9 +2991,7 @@ function predictionsLocked(cur) {
 // table with no knockout bracket at all, so there's nothing meaningful to
 // predict (no promotion, no final).
 function predictionsSupported(cur) {
-  if (!cur) return false;
-  if (cur.groupMode === "two") return true;
-  return cur.groupMode === "one" && (cur.players || []).length >= 4;
+  return false;
 }
 
 function myPrediction(tournamentId) {
@@ -3995,7 +3993,7 @@ function tournamentFlowHtml() {
       </button>
     </div>`;
 
-  return stageHtml + predictionsSectionHtml(cur) + discardBar;
+  return stageHtml + discardBar;
 }
 
 // ============ Stats panel ============
@@ -4050,7 +4048,6 @@ function statsPanelHtml(archive, compact, labelOverride) {
   }
 
   const stats = computeHistoricalStats(archive);
-  const predictionLeaderboard = computePredictionLeaderboard(archive, predictions);
   const champions = archive.filter(t => t.champion).length;
   const totalGoals = Object.values(stats.mostGoalsScored || []).reduce((sum, r) => sum + (r.goalsScored || 0), 0);
   const latest = archive[archive.length - 1];
@@ -4103,7 +4100,6 @@ function statsPanelHtml(archive, compact, labelOverride) {
         ${statBlockHtml("الأكثر وصافة","🥈",stats.mostRunnerUps,"runnerUps","مرة")}
         ${statBlockHtml("الأكثر صعوداً للنهائي","🏁",stats.mostFinalAppearances,"finalAppearances","مرة")}
         ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة")}
-        ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard,"predictionPoints","نقطة")}
       </div>
     `;
   } else {
@@ -4114,7 +4110,6 @@ function statsPanelHtml(archive, compact, labelOverride) {
       </div>
       ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles.slice(0,3),"titles","لقب")}
       ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored.slice(0,3),"goalsScored","هدف")}
-      ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard.slice(0,3),"predictionPoints","نقطة")}
     `;
   }
 
@@ -4129,14 +4124,6 @@ function statsPanelHtml(archive, compact, labelOverride) {
     `;
 
     html += archive.slice().reverse().map((t,index) => {
-      const tPreds = predictions.filter(p => p.tournament_id === t.id);
-      const predRecap = tPreds.length > 0
-        ? `<div class="archive-predictions"><span class="inline-ui-icon ui-predictions" aria-hidden="true"></span><span>${tPreds.map(p => {
-            const { points } = computePredictionPoints(t, p);
-            return `${escapeHtml(p.member_name)} (${points})`;
-          }).join("، ")}</span></div>`
-        : "";
-
       const champMember = t.champion ? findMemberByName(t.champion) : null;
       const runnerMember = t.runnerUp ? findMemberByName(t.runnerUp) : null;
       const champLogo = champMember ? clubLogoHtml(champMember.club, 'club-logo-lg') : "";
@@ -4155,7 +4142,6 @@ function statsPanelHtml(archive, compact, labelOverride) {
               <span class="archive-divider-mini"></span>
               <div class="archive-runner">${runnerLogo}<div><small>الوصيف</small><strong>${t.runnerUp ? coloredNameHtml(t.runnerUp) : "—"}</strong></div></div>
             </div>
-            ${predRecap}
           </div>
           ${isAdmin() ? `<button class="archive-delete-btn" onclick="deleteArchivedTournament('${t.id}')" title="حذف البطولة"><span>✕</span></button>` : ""}
         </div>
@@ -4668,6 +4654,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=17"></script>
+<script src="theme-v2.js?v=18"></script>
 </body>
 </html>

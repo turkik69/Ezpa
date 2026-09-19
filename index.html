@@ -3111,7 +3111,7 @@ function membersStageHtml() {
     ${confirmed.length === 0 ? `<div class="empty-note">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
 
     <div class="section-title">بانتظار التأكيد (${unconfirmed.length})</div>
-    ${unconfirmed.length === 0 ? `<div class="empty-note">الكل أكّد حضوره 🎉</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
+    ${unconfirmed.length === 0 ? `<div class="empty-note"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>الكل أكّد حضوره</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
 
     <div class="add-member-box">
       <div class="add-member-label">+ إضافة عضو أو ضيف جديد</div>
@@ -3286,7 +3286,7 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
 
     const byePlayer = roundByes && roundByes[roundNum];
     const byeHtml = byePlayer
-      ? `<div class="bye-note">💤 ${coloredNameHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
+      ? `<div class="bye-note"><span class="inline-ui-icon ui-rest" aria-hidden="true"></span>${coloredNameHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
       : "";
 
     return `<div class="round-block">
@@ -3457,7 +3457,7 @@ function cupStageHtml() {
   const sideBHtml = cupBracketSideHtml(bracket, "B", "الجهة الثانية 🔵");
   const twoColHtml = (sideAHtml || sideBHtml) ? `<div class="two-col">${sideAHtml}${sideBHtml}</div>` : "";
   const finalBoxHtml = `<div class="group-box box-final">
-    <h3 class="group-title">🏆 النهائي</h3>
+    <h3 class="group-title"><span class="inline-ui-icon ui-trophy" aria-hidden="true"></span>النهائي</h3>
     <div class="match-list">${cupMatchRowHtml(bracket, finalMatch)}</div>
   </div>`;
 
@@ -3617,7 +3617,7 @@ function myPredictionLockedHtml(myPred) {
   if (myPred.predicted_champion) parts.push(`البطل: ${coloredNameHtml(myPred.predicted_champion)}`);
   return `
     <div class="prediction-row" style="border-right-color:#E4C06E;">
-      <div class="prediction-row-name">🔒 توقعك محفوظ ومقفول</div>
+      <div class="prediction-row-name"><span class="inline-ui-icon ui-lock" aria-hidden="true"></span>توقعك محفوظ ومقفول</div>
       <div class="prediction-row-picks">${parts.join(" · ")}</div>
     </div>
     <p class="hint" style="margin-top:8px;">ما تقدر تعدّله بعد الحفظ — عشان يبقى توقع حقيقي بدون تغيير الرأي لاحقاً.</p>
@@ -3633,7 +3633,7 @@ function predictionsSectionHtml(cur) {
 
   let bodyHtml;
   if (locked) {
-    bodyHtml = `<p class="hint">🔒 التوقعات مقفولة (بدأت النتائج تنحسب). توقعات الجميع:</p>` + predictionsListHtml(tournamentPreds);
+    bodyHtml = `<p class="hint"><span class="inline-ui-icon ui-lock" aria-hidden="true"></span>التوقعات مقفولة (بدأت النتائج تنحسب). توقعات الجميع:</p>` + predictionsListHtml(tournamentPreds);
   } else {
     const user = getCurrentUser();
     if (!user) {
@@ -3727,7 +3727,7 @@ function statsPanelHtml(archive, compact, labelOverride) {
     html += archive.slice().reverse().map(t => {
       const tPreds = predictions.filter(p => p.tournament_id === t.id);
       const predRecap = tPreds.length > 0
-        ? `<div class="prediction-row-picks" style="margin-top:4px;">🔮 ${tPreds.map(p => {
+        ? `<div class="prediction-row-picks" style="margin-top:4px;"><span class="inline-ui-icon ui-predictions" aria-hidden="true"></span>${tPreds.map(p => {
             const { points } = computePredictionPoints(t, p);
             return `${escapeHtml(p.member_name)} (${points})`;
           }).join("، ")}</div>`
@@ -3791,7 +3791,7 @@ function loginModalHtml() {
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeLogin()">
     <div class="modal-box">
-      <div class="section-icon-title"><span class="icon">🔑</span>تسجيل الدخول</div>
+      <div class="section-icon-title"><span class="icon ui-icon ui-login" aria-hidden="true"></span>تسجيل الدخول</div>
       <p class="hint">أدخل اسمك بالضبط زي ما هو مسجل بقائمة الأعضاء، ورمز الدخول (افتراضياً 1234 لو ما غيّرته).</p>
       <div class="input-row" style="flex-direction:column;">
         <input class="text-input" placeholder="اسم المستخدم" value="${escapeHtml(loginModal.nameInput)}" oninput="updateLoginField('nameInput', this.value)">
@@ -3832,33 +3832,33 @@ function profilePageHtml() {
     notifSectionHtml = `<p class="hint">الإشعارات ما مدعومة بهذا المتصفح.</p>`;
   } else if (permState === "granted") {
     notifSectionHtml = `
-      <div class="winner-banner" style="margin-bottom:10px;">🔔 الإشعارات مفعّلة على هذا الجهاز</div>
+      <div class="winner-banner" style="margin-bottom:10px;"><span class="inline-ui-icon ui-bell" aria-hidden="true"></span>الإشعارات مفعّلة على هذا الجهاز</div>
       <button class="member-remove-btn" style="width:100%; opacity:0.7;" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
   } else if (permState === "denied") {
     notifSectionHtml = `<p class="hint warn-note">حظرت الإشعارات لهذا الموقع من إعدادات المتصفح. لازم تفعّلها يدوياً من إعدادات المتصفح/الجوال عشان تشتغل.</p>`;
   } else {
-    notifSectionHtml = `<button class="cta-btn" onclick="enablePushForThisDevice()">🔔 فعّل الإشعارات على هذا الجهاز</button>`;
+    notifSectionHtml = `<button class="cta-btn" onclick="enablePushForThisDevice()"><span class="inline-ui-icon ui-bell" aria-hidden="true"></span>فعّل الإشعارات على هذا الجهاز</button>`;
   }
   const currentColor = profileModal.color != null ? profileModal.color : (user.color || "#F2EEE3");
   const swatchesHtml = PLAYER_COLOR_PALETTE.map(c => `
     <div class="color-swatch ${c === currentColor ? 'selected' : ''}" style="background:${c}" onclick="updateProfileField('color', '${c}')"></div>
   `).join("");
   return `<div class="card theme-members">
-    <div class="section-icon-title"><span class="icon">👤</span>${coloredNameHtml(user.name)}</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-profile" aria-hidden="true"></span>${coloredNameHtml(user.name)}</div>
     <p class="hint">${roleLabel}</p>
 
     ${isAdmin() ? `
     <div class="archive-divider"></div>
-    <div class="section-icon-title"><span class="icon">🛠️</span>لوحة المشرف</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-admin" aria-hidden="true"></span>لوحة المشرف</div>
     ${isTurki() ? `
-    <div class="add-member-label">📢 إرسال إشعار لكل الأعضاء</div>
+    <div class="add-member-label"><span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>إرسال إشعار لكل الأعضاء</div>
     <p class="hint">هذي الميزة خاصة فيك بس — اكتب رسالة وتوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات.</p>
-    <button class="cta-btn" onclick="openMessageModal()">📢 كتابة إشعار جديد</button>
+    <button class="cta-btn" onclick="openMessageModal()"><span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>كتابة إشعار جديد</button>
     <div class="archive-divider" style="margin:14px 0;"></div>
     ` : ""}
-    <div class="add-member-label">💾 النسخ الاحتياطي</div>
+    <div class="add-member-label"><span class="inline-ui-icon ui-backup" aria-hidden="true"></span>النسخ الاحتياطي</div>
     <p class="hint">احفظ نسخة من كل بيانات الدوري (الأعضاء، الأرشيف، البطولة الجارية) بملف على جهازك، أو استرجع نسخة سابقة لو صار خلل أو فقدان بيانات. نسخة تلقائية تُحفظ أيضاً بعد كل بطولة تكتمل بدون أي تدخل منك.</p>
-    <button class="cta-btn" onclick="exportBackupFile()">📥 تصدير نسخة احتياطية الآن</button>
+    <button class="cta-btn" onclick="exportBackupFile()"><span class="inline-ui-icon ui-download" aria-hidden="true"></span>تصدير نسخة احتياطية الآن</button>
     <label class="cta-btn" style="display:block; text-align:center; cursor:pointer; margin-top:8px;">
       📤 استرجاع من ملف
       <input type="file" accept="application/json" style="display:none;" onchange="handleBackupFileImport(this)">
@@ -3907,7 +3907,7 @@ function messageModalHtml() {
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeMessageModal()">
     <div class="modal-box">
-      <div class="section-icon-title"><span class="icon">📢</span>إرسال إشعار لكل الأعضاء</div>
+      <div class="section-icon-title"><span class="icon ui-icon ui-broadcast" aria-hidden="true"></span>إرسال إشعار لكل الأعضاء</div>
       <p class="hint">يوصل كإشعار حقيقي لجوال كل عضو فعّل الإشعارات على جهازه — حتى لو التطبيق مقفول عندهم.</p>
       <div class="input-row" style="flex-direction:column;">
         <input class="text-input" placeholder="عنوان الإشعار (مثلاً: تجمعوا الساعة 5)" maxlength="60" value="${escapeHtml(messageModal.title)}" oninput="updateMessageField('title', this.value)">
@@ -3925,7 +3925,7 @@ function messageModalHtml() {
       <p class="hint" style="margin-top:6px;">💡 الصورة تظهر بشكل موثوق على أندرويد. على آيفون، بعض الأجهزة تعرض النص بس بدون الصورة — هذا قيد من نظام آبل نفسه.</p>
       ${messageModal.error ? `<div class="warn-note">${escapeHtml(messageModal.error)}</div>` : ""}
       ${messageModal.success ? `<div class="winner-banner" style="margin-top:8px;">${escapeHtml(messageModal.success)}</div>` : ""}
-      <button class="cta-btn" ${(messageModal.sending || messageModal.uploading) ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : "📢 إرسال الآن"}</button>
+      <button class="cta-btn" ${(messageModal.sending || messageModal.uploading) ? "disabled" : ""} onclick="sendCustomMessage()">${messageModal.sending ? "جارِ الإرسال..." : `<span class="inline-ui-icon ui-broadcast" aria-hidden="true"></span>إرسال الآن`}</button>
       <button class="member-remove-btn" style="width:100%; margin-top:8px; opacity:0.6;" onclick="closeMessageModal()">إلغاء</button>
     </div>
   </div>`;
@@ -4103,7 +4103,7 @@ function render() {
       <button class="tab-btn ${view==='members'?'active':''}" onclick="setView('members')">قائمة الأعضاء</button>
       <button class="tab-btn ${view==='tournament'?'active':''}" onclick="setView('tournament')">البطولة الحالية</button>
       <button class="tab-btn ${view==='stats'?'active':''}" onclick="setView('stats')">التصنيفات التاريخية</button>
-      <button class="tab-btn ${view==='friendly'?'active':''}" onclick="setView('friendly')">🎉 ودية</button>
+      <button class="tab-btn ${view==='friendly'?'active':''}" onclick="setView('friendly')">ودية</button>
     </div>
     <div class="layout">
       <main>

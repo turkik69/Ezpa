@@ -10,7 +10,7 @@
 <title>دوري أبطال العزبة</title>
 <link rel="icon" type="image/png" href="icon-192.png?v=4">
 <link rel="apple-touch-icon" href="icon-192.png?v=4">
-<link rel="manifest" href="manifest.json?v=4">
+<link rel="manifest" href="manifest.json?v=5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=4">
+<link rel="stylesheet" href="theme-v2.css?v=5">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -1233,6 +1233,13 @@ function clubLogoHtml(clubName, sizeClass) {
   const src = CLUB_LOGOS[clubName];
   if (!src) return "";
   return `<img src="${src}" alt="" data-club="${escapeHtml(clubName)}" class="club-logo ${sizeClass || ''}">`;
+}
+
+function playerIdentityHtml(name, compact) {
+  const m = findMemberByName(name);
+  const logo = m ? clubLogoHtml(m.club, compact ? "club-logo-sm" : "") : "";
+  const club = m && m.club ? `<span class="player-club-mini">${escapeHtml(m.club)}</span>` : "";
+  return `<span class="player-identity ${compact ? "compact" : ""}">${logo}<span class="player-identity-text">${coloredNameHtml(name, "", true)}${club}</span></span>`;
 }
 
 // builds a <select> for a 0-15 score dropdown
@@ -3097,7 +3104,7 @@ function membersStageHtml() {
     </div>`;
 
   return `<div class="card theme-members">
-    <div class="section-icon-title"><span class="icon">👥</span>قائمة الأعضاء والأندية</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-members" aria-hidden="true"></span>قائمة الأعضاء والأندية</div>
     <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه). كل عضو يأكد حضوره هو بس — تأكيد حضور شخص ثاني صلاحية مشرفين فقط. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
 
     <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
@@ -3162,8 +3169,8 @@ function registerStageHtml() {
   }
 
   return `<div class="card theme-gold">
-    <div class="tournament-badge">🏆 البطولة القادمة: ${upcomingName}</div>
-    <div class="section-icon-title"><span class="icon">🏁</span>بدء البطولة</div>
+    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>البطولة القادمة: ${upcomingName}</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-start" aria-hidden="true"></span>بدء البطولة</div>
     <p class="hint">المشاركون هنا هم فقط من أكّدوا حضورهم من "قائمة الأعضاء". تقدرون تلعبون أكثر من بطولة بنفس اليوم بنفس المؤكدين — التأكيدات ما تتصفر إلا لما تضغطون "إنهاء يوم اللعب" من صفحة الأعضاء.</p>
 
     <div class="player-grid">${confirmedListHtml}</div>
@@ -3172,7 +3179,7 @@ function registerStageHtml() {
     <div class="mode-switch">
       <button class="mode-btn ${groupMode==='two'?'active':''}" onclick="setGroupMode('two')">مجموعتين (قرعة دوارة)</button>
       <button class="mode-btn ${groupMode==='one'?'active':''}" onclick="setGroupMode('one')">مجموعة واحدة (بدون قرعة)</button>
-      <button class="mode-btn ${groupMode==='cup'?'active':''}" onclick="setGroupMode('cup')">🥊 كأس خروج المغلوب</button>
+      <button class="mode-btn ${groupMode==='cup'?'active':''}" onclick="setGroupMode('cup')"><span class="inline-ui-icon ui-knockout" aria-hidden="true"></span>كأس خروج المغلوب</button>
     </div>
     ${groupMode === 'cup' ? `<p class="hint">كل مباراة إقصائية من الجولة الأولى — خسرت طلعت! لو العدد فردي أو مو قوة 2، بعض اللاعبين ياخذون "باي" مباشر بالجولة الأولى بشكل عشوائي وعادل.</p>` : ""}
 
@@ -3204,21 +3211,21 @@ function wheelStageHtml() {
   }).join("");
 
   const groupAHtml = groupA.length === 0 ? `<div class="empty-note">—</div>`
-    : groupA.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${coloredNameHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
+    : groupA.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
   const groupBHtml = groupB.length === 0 ? `<div class="empty-note">—</div>`
-    : groupB.map((p,i) => `<div class="group-row" style="display:flex; align-items:center; gap:6px;">${i+1}. ${coloredNameHtml(p.name)} <span style="opacity:0.5; display:flex; align-items:center; gap:4px;">— ${clubLogoHtml(p.club, 'club-logo-sm')}${escapeHtml(p.club||'')}</span></div>`).join("");
+    : groupB.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
 
   return `<div class="card theme-gold">
     <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon">🎡</span>القرعة الدوارة</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-wheel" aria-hidden="true"></span>القرعة الدوارة</div>
     <p class="hint">اضغط "ابدأ الدوران" ليطلع اسم عشوائي ويروح تلقائياً لأحد الفريقين. بمجرد ما تكتمل المجموعة الأولى، الباقين ينتقلون تلقائياً للمجموعة الثانية بدون الحاجة لإكمال القرعة للجميع.</p>
-    <div class="wheel-area">
+    <div class="wheel-area broadcast-wheel"><div class="wheel-live-strip"><span class="live-dot"></span><span>قرعة البطولة المباشرة</span></div>
       <div class="wheel-wrap">
         <div class="pointer">▼</div>
         <div class="wheel" id="wheelEl" style="transform: rotate(${wheelUi.rotation}deg); background: ${n>0?conicGradient(n,colors):'#0d1f38'}">
           ${labelsHtml}
         </div>
-        <div class="wheel-hub">⚽</div>
+        <div class="wheel-hub"><span class="wheel-ball-icon" aria-hidden="true"></span></div>
       </div>
       <button class="spin-btn" ${wheelUi.spinning || n===0 ? "disabled" : ""} onclick="spinWheel()">
         ${wheelUi.spinning ? "...تدور" : (n===0 ? "اكتملت القرعة" : "ابدأ الدوران")}
@@ -3226,8 +3233,8 @@ function wheelStageHtml() {
       ${wheelUi.lastWinner && !wheelUi.spinning ? `<div class="winner-banner">${escapeHtml(wheelUi.lastWinner.name)}</div>` : ""}
     </div>
     <div class="two-col">
-      <div class="group-box"><h3 class="group-title">المجموعة الأولى</h3>${groupAHtml}</div>
-      <div class="group-box"><h3 class="group-title">المجموعة الثانية</h3>${groupBHtml}</div>
+      <div class="group-box draw-group-card box-a"><h3 class="group-title"><span class="group-letter">A</span>المجموعة الأولى</h3>${groupAHtml}</div>
+      <div class="group-box draw-group-card box-b"><h3 class="group-title"><span class="group-letter">B</span>المجموعة الثانية</h3>${groupBHtml}</div>
     </div>
     ${wheelComplete ? `<button class="cta-btn" onclick="proceedToGroups()">الانتقال لجدول المباريات ←</button>` : ""}
     ${!wheelComplete && remaining.length === 0 && cur.seededRunnerUp ? `<div class="empty-note">جارِ تثبيت الوصيف بالمجموعة الثانية...</div>` : ""}
@@ -3270,11 +3277,11 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
     const roundMatches = byRound[roundNum];
     const matchRows = roundMatches.map(m => `
       <div class="match-row">
-        <span class="match-name">${coloredNameHtml(m.a.name, "", true)}</span>
+        <span class="match-name">${playerIdentityHtml(m.a.name, true)}</span>
         ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
         <span class="vs">–</span>
         ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
-        <span class="match-name">${coloredNameHtml(m.b.name, "", true)}</span>
+        <span class="match-name">${playerIdentityHtml(m.b.name, true)}</span>
       </div>`).join("");
 
     const byePlayer = roundByes && roundByes[roundNum];
@@ -3306,11 +3313,11 @@ function groupsStageHtml() {
 
   return `<div class="card theme-groups">
     <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon">⚔️</span>دوري المجموعات</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-groups" aria-hidden="true"></span>دوري المجموعات</div>
     <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
     <div class="two-col">
-      ${groupPanelHtml("المجموعة الأولى 🟢", cur.matchesA, "A", tableA, cur.groupARoundByes)}
-      ${groupPanelHtml("المجموعة الثانية 🔵", cur.matchesB, "B", tableB, cur.groupBRoundByes)}
+      ${groupPanelHtml('<span class="group-letter">A</span> المجموعة الأولى', cur.matchesA, "A", tableA, cur.groupARoundByes)}
+      ${groupPanelHtml('<span class="group-letter">B</span> المجموعة الثانية', cur.matchesB, "B", tableB, cur.groupBRoundByes)}
     </div>
     <button class="cta-btn" ${!(allAPlayed && allBPlayed) ? "disabled" : ""} onclick="goToKnockout()">الانتقال لنصف النهائي ←</button>
     ${!(allAPlayed && allBPlayed) ? `<div class="empty-note">أكمل جميع نتائج المجموعتين للمتابعة</div>` : ""}
@@ -3334,7 +3341,7 @@ function singleGroupStageHtml() {
   }
   return `<div class="card theme-groups">
     <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon">🔀</span>مجموعة واحدة — الكل ضد الكل</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-single" aria-hidden="true"></span>مجموعة واحدة — الكل ضد الكل</div>
     <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث (إلا لو كان العدد الكلي 4 بالضبط، فالأول والثاني يتأهلون للنهائي مباشرة).</p>
     ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
     ${actionHtml}
@@ -3352,13 +3359,13 @@ function penaltyShootoutHtml(match, buildOnchange) {
   const bothSet = match.penA != null && match.penB != null;
   const stillTied = bothSet && match.penA === match.penB;
   return `<div class="penalty-shootout-box">
-    <div class="penalty-shootout-label">⚽ تعادل بالوقت الأصلي — ضربات الجزاء تحدد الفائز</div>
+    <div class="penalty-shootout-label"><span class="inline-ui-icon ui-ball" aria-hidden="true"></span>تعادل بالوقت الأصلي — ضربات الجزاء تحدد الفائز</div>
     <div class="match-row">
-      <span class="match-name">${match.a ? coloredNameHtml(match.a.name, "", true) : "—"}</span>
+      <span class="match-name">${match.a ? playerIdentityHtml(match.a.name, true) : "—"}</span>
       ${scoreSelectHtml(match.penA, buildOnchange("penA"))}
       <span class="vs">–</span>
       ${scoreSelectHtml(match.penB, buildOnchange("penB"))}
-      <span class="match-name">${match.b ? coloredNameHtml(match.b.name, "", true) : "—"}</span>
+      <span class="match-name">${match.b ? playerIdentityHtml(match.b.name, true) : "—"}</span>
     </div>
     ${stillTied ? `<div class="warn-note">ضربات الجزاء لازم يكون لها فائز — عدّل إذا تعادلت بالغلط</div>` : ""}
   </div>`;
@@ -3369,11 +3376,11 @@ function semiPanelHtml(label, match, key) {
   return `<div class="group-box">
     <h3 class="group-title">${label}</h3>
     <div class="match-row">
-      <span class="match-name">${match.a ? coloredNameHtml(match.a.name, "", true) : "—"}</span>
+      <span class="match-name">${match.a ? playerIdentityHtml(match.a.name, true) : "—"}</span>
       ${scoreSelectHtml(match.scoreA, `onchange="updateSemiField('${key}','scoreA',this.value)"`)}
       <span class="vs">–</span>
       ${scoreSelectHtml(match.scoreB, `onchange="updateSemiField('${key}','scoreB',this.value)"`)}
-      <span class="match-name">${match.b ? coloredNameHtml(match.b.name, "", true) : "—"}</span>
+      <span class="match-name">${match.b ? playerIdentityHtml(match.b.name, true) : "—"}</span>
     </div>
     ${penHtml}
   </div>`;
@@ -3456,7 +3463,7 @@ function cupStageHtml() {
 
   return `<div class="card theme-knockout">
     <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon">🥊</span>كأس خروج المغلوب</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-knockout" aria-hidden="true"></span>كأس خروج المغلوب</div>
     <p class="hint">الجدول كامل من البداية على جانبين يتقاربان بالنهائي. الفائز يتقدم لمكانه بالجولة التالية تلقائياً، والخاسر يبين بعلامة ✗. أي تعادل يُحسم بضربات الجزاء.</p>
     ${twoColHtml}
     ${finalBoxHtml}
@@ -3511,7 +3518,7 @@ function knockoutStageHtml() {
 
   return `<div class="card theme-knockout">
     <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon">🥇</span>الأدوار الإقصائية</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-knockout" aria-hidden="true"></span>الأدوار الإقصائية</div>
     ${semisSectionHtml}
     ${finalHtml}
   </div>`;
@@ -3579,7 +3586,7 @@ function predictionFormHtml(cur, draft) {
         ${championOptions}
       </select>
     </div>
-    <button class="cta-btn" onclick="submitPrediction()">🔒 حفظ توقعي نهائياً</button>
+    <button class="cta-btn" onclick="submitPrediction()"><span class="inline-ui-icon ui-lock" aria-hidden="true"></span>حفظ توقعي نهائياً</button>
   `;
 }
 
@@ -3647,7 +3654,7 @@ function predictionsSectionHtml(cur) {
   }
 
   return `<div class="card theme-members" style="margin-top:20px;">
-    <div class="section-icon-title"><span class="icon">🔮</span>توقعات المشاركين</div>
+    <div class="section-icon-title"><span class="icon ui-icon ui-predictions" aria-hidden="true"></span>توقعات المشاركين</div>
     ${bodyHtml}
   </div>`;
 }
@@ -3706,7 +3713,7 @@ function statsPanelHtml(archive, compact, labelOverride) {
   const predictionLeaderboard = computePredictionLeaderboard(archive, predictions);
   let html = `<div class="${wrapClass}">
     ${compact ? `<h3 class="group-title">${label.title} (${archive.length} بطولة)</h3>` : `<div class="section-icon-title"><span class="icon">${label.icon}</span>${label.title} (${archive.length} بطولة مكتملة)</div>`}
-    ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()">📄 تصدير التصنيفات والأرشيف PDF</button>` : ""}
+    ${!compact && isAdmin() ? `<button class="cta-btn" style="margin-bottom:16px;" onclick="exportStatsAndArchiveToPdf()"><span class="inline-ui-icon ui-file" aria-hidden="true"></span>تصدير التصنيفات والأرشيف PDF</button>` : ""}
     ${statBlockHtml("الأكثر تتويجاً","👑",stats.mostTitles,"titles","لقب")}
     ${statBlockHtml("الأكثر تسجيلاً للأهداف","⚽",stats.mostGoalsScored,"goalsScored","هدف")}
     ${statBlockHtml("الأكثر تلقياً للأهداف","🥅",stats.mostGoalsConceded,"goalsConceded","هدف")}
@@ -3715,7 +3722,7 @@ function statsPanelHtml(archive, compact, labelOverride) {
     ${statBlockHtml("الأقل صعوداً من مجموعته","📉",stats.leastPromotions,"missedPromotions","مرة عدم صعود")}
     ${statBlockHtml("الأكثر نقاط توقعات","🔮",predictionLeaderboard,"predictionPoints","نقطة")}`;
   if (!compact) {
-    html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon">🗂️</span>أرشيف البطولات</div>
+    html += `<div class="archive-divider"></div><div class="section-icon-title"><span class="icon ui-icon ui-archive" aria-hidden="true"></span>أرشيف البطولات</div>
       <p class="hint" style="margin-bottom:12px;">إذا دخلت نتائج غلط لبطولة معينة، احذفها بالكامل من هنا — بياناتها بتنمسح من كل الإحصائيات فوق تلقائياً.</p>`;
     html += archive.slice().reverse().map(t => {
       const tPreds = predictions.filter(p => p.tournament_id === t.id);
@@ -4180,6 +4187,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=4"></script>
+<script src="theme-v2.js?v=5"></script>
 </body>
 </html>

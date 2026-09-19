@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=15">
+<link rel="stylesheet" href="theme-v2.css?v=16">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -1259,10 +1259,9 @@ function scoreSelectHtml(value, onchangeAttr) {
 const emptyState = () => ({ tournamentIndex: 0, friendlyTournamentIndex: 0, archive: [], current: null, lastChampion: null, lastRunnerUp: null });
 let appState = emptyState();
 let members = []; // [{id, name, club, is_guest, confirmed, role, pin}]
-let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_group_a, predicted_group_b, predicted_top4, predicted_finalists, predicted_champion}]
-// Draft state for the prediction form (mirrors the addMemberDraft pattern —
-// tracked here so a background poll re-render never wipes in-progress picks).
-let predictionDraft = null; // null | { groupA:[], groupB:[], top4:[], finalists:[], champion:null }
+let predictions = []; // [{id, tournament_id, member_id, member_name, predicted_finalists, predicted_champion}]
+// Draft state for the prediction form — only finalists + champion are predicted now.
+let predictionDraft = null; // null | { finalists:[], champion:null }
 let backupsListState = null; // null (not loaded yet) | { loading, backups:[], error }
 let loaded = false;
 let view = "members"; // "tournament" | "members" | "stats"
@@ -1747,17 +1746,6 @@ window.submitPrediction = async function() {
   const draft = predictionDraft;
   if (!draft) return;
 
-  if (cur.groupMode === "two") {
-    if (draft.groupA.length !== 2 || draft.groupB.length !== 2) {
-      alert("لازم تختار لاعبين بالضبط من كل مجموعة.");
-      return;
-    }
-  } else {
-    if (draft.top4.length !== 4) {
-      alert("لازم تختار أربعة لاعبين بالضبط للصاعدين.");
-      return;
-    }
-  }
   if (draft.finalists.length !== 2) { alert("لازم تختار لاعبين بالضبط لطرفي النهائي."); return; }
   if (!draft.champion) { alert("لازم تختار توقع البطل."); return; }
 
@@ -1766,9 +1754,10 @@ window.submitPrediction = async function() {
     tournament_id: cur.id,
     member_id: user.id,
     member_name: user.name,
-    predicted_group_a: cur.groupMode === "two" ? draft.groupA : null,
-    predicted_group_b: cur.groupMode === "two" ? draft.groupB : null,
-    predicted_top4: cur.groupMode === "one" ? draft.top4 : null,
+    // Deprecated qualifier-prediction columns remain null for DB compatibility.
+    predicted_group_a: null,
+    predicted_group_b: null,
+    predicted_top4: null,
     predicted_finalists: draft.finalists,
     predicted_champion: draft.champion,
   };
@@ -2504,7 +2493,7 @@ function proceedToGroups() {
     groupATotalRounds: buildA.totalRounds,
     groupBTotalRounds: buildB.totalRounds,
   });
-  sendPushNotification(`🔮 التوقعات مفتوحة!${cur.isOfficial ? "" : " (ودية)"}`, "اكتملت المجموعات — سجل توقعك للصاعدين والبطل قبل ما تبدأ النتائج");
+  sendPushNotification(`🔮 التوقعات مفتوحة!${cur.isOfficial ? "" : " (ودية)"}`, "اكتملت المجموعات — سجل توقعك لطرفي النهائي والبطل قبل ما تبدأ النتائج");
 }
 
 function doUpdateMatchField(which, matchId, field, value) {
@@ -3019,21 +3008,6 @@ function computePredictionPoints(archiveEntry, prediction) {
   let points = 0;
   const details = [];
 
-  if (archiveEntry.promotedGroupA && prediction.predicted_group_a) {
-    const correct = prediction.predicted_group_a.filter(n => archiveEntry.promotedGroupA.includes(n));
-    points += correct.length * 1;
-    details.push({ label: "صعود المجموعة الأولى", correct: correct.length, total: archiveEntry.promotedGroupA.length });
-  }
-  if (archiveEntry.promotedGroupB && prediction.predicted_group_b) {
-    const correct = prediction.predicted_group_b.filter(n => archiveEntry.promotedGroupB.includes(n));
-    points += correct.length * 1;
-    details.push({ label: "صعود المجموعة الثانية", correct: correct.length, total: archiveEntry.promotedGroupB.length });
-  }
-  if (archiveEntry.promotedTop4 && prediction.predicted_top4) {
-    const correct = prediction.predicted_top4.filter(n => archiveEntry.promotedTop4.includes(n));
-    points += correct.length * 1;
-    details.push({ label: "الصاعدون للإقصائي", correct: correct.length, total: archiveEntry.promotedTop4.length });
-  }
   const actualFinalists = [archiveEntry.champion, archiveEntry.runnerUp].filter(Boolean);
   if (prediction.predicted_finalists && actualFinalists.length === 2) {
     const correct = prediction.predicted_finalists.filter(n => actualFinalists.includes(n));
@@ -3894,9 +3868,6 @@ function ensurePredictionDraft(cur) {
     const existing = myPrediction(cur.id);
     predictionDraft = {
       tournamentId: cur.id,
-      groupA: existing?.predicted_group_a ? [...existing.predicted_group_a] : [],
-      groupB: existing?.predicted_group_b ? [...existing.predicted_group_b] : [],
-      top4: existing?.predicted_top4 ? [...existing.predicted_top4] : [],
       finalists: existing?.predicted_finalists ? [...existing.predicted_finalists] : [],
       champion: existing?.predicted_champion || null,
     };
@@ -3905,39 +3876,20 @@ function ensurePredictionDraft(cur) {
 }
 
 function predictionFormHtml(cur, draft) {
-  let groupsHtml = "";
-  if (cur.groupMode === "two") {
-    const groupARows = cur.groupA.map(p => predictionCheckboxRow("groupA", p.name, draft.groupA.includes(p.name), 2)).join("");
-    const groupBRows = cur.groupB.map(p => predictionCheckboxRow("groupB", p.name, draft.groupB.includes(p.name), 2)).join("");
-    groupsHtml = `
-      <div class="prediction-group-box">
-        <div class="prediction-group-title">مين راح يصعد من المجموعة الأولى؟ (اختر 2)</div>
-        ${groupARows}
-      </div>
-      <div class="prediction-group-box">
-        <div class="prediction-group-title">مين راح يصعد من المجموعة الثانية؟ (اختر 2)</div>
-        ${groupBRows}
-      </div>`;
-  } else {
-    const top4Rows = cur.players.map(p => predictionCheckboxRow("top4", p.name, draft.top4.includes(p.name), 4)).join("");
-    groupsHtml = `
-      <div class="prediction-group-box">
-        <div class="prediction-group-title">مين الأربعة اللي راح يصعدون للإقصائي؟ (اختر 4)</div>
-        ${top4Rows}
-      </div>`;
-  }
-
   const finalistRows = cur.players.map(p => predictionCheckboxRow("finalists", p.name, draft.finalists.includes(p.name), 2)).join("");
   const championOptions = cur.players.map(p => `<option value="${escapeHtml(p.name)}" ${draft.champion === p.name ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("");
 
   return `
-    ${groupsHtml}
+    <div class="prediction-simple-intro">
+      <span class="inline-ui-icon ui-predictions" aria-hidden="true"></span>
+      <div><strong>توقع النهائي والبطل فقط</strong><small>اختر طرفي النهائي ثم حدد توقعك للبطل.</small></div>
+    </div>
     <div class="prediction-group-box">
-      <div class="prediction-group-title">مين راح يكونون بالنهائي؟ (اختر 2)</div>
+      <div class="prediction-group-title">من سيكون طرفا النهائي؟ (اختر 2)</div>
       ${finalistRows}
     </div>
     <div class="prediction-group-box">
-      <div class="prediction-group-title">مين راح يكون البطل؟</div>
+      <div class="prediction-group-title">من سيكون البطل؟</div>
       <select class="text-input" onchange="setPredictionChampion(this.value)">
         <option value="">— اختر —</option>
         ${championOptions}
@@ -3953,9 +3905,6 @@ function predictionsListHtml(tournamentPreds) {
   }
   return `<div class="predictions-list">` + tournamentPreds.map(p => {
     const parts = [];
-    if (p.predicted_group_a) parts.push(`مجموعة 1: ${p.predicted_group_a.map(n => coloredNameHtml(n)).join("، ")}`);
-    if (p.predicted_group_b) parts.push(`مجموعة 2: ${p.predicted_group_b.map(n => coloredNameHtml(n)).join("، ")}`);
-    if (p.predicted_top4) parts.push(`الصاعدون: ${p.predicted_top4.map(n => coloredNameHtml(n)).join("، ")}`);
     if (p.predicted_finalists) parts.push(`النهائي: ${p.predicted_finalists.map(n => coloredNameHtml(n)).join("، ")}`);
     if (p.predicted_champion) parts.push(`البطل: ${coloredNameHtml(p.predicted_champion)}`);
     return `<div class="prediction-row">
@@ -3967,9 +3916,6 @@ function predictionsListHtml(tournamentPreds) {
 
 function myPredictionLockedHtml(myPred) {
   const parts = [];
-  if (myPred.predicted_group_a) parts.push(`مجموعة 1: ${myPred.predicted_group_a.map(n => coloredNameHtml(n)).join("، ")}`);
-  if (myPred.predicted_group_b) parts.push(`مجموعة 2: ${myPred.predicted_group_b.map(n => coloredNameHtml(n)).join("، ")}`);
-  if (myPred.predicted_top4) parts.push(`الصاعدون: ${myPred.predicted_top4.map(n => coloredNameHtml(n)).join("، ")}`);
   if (myPred.predicted_finalists) parts.push(`النهائي: ${myPred.predicted_finalists.map(n => coloredNameHtml(n)).join("، ")}`);
   if (myPred.predicted_champion) parts.push(`البطل: ${coloredNameHtml(myPred.predicted_champion)}`);
   return `
@@ -4706,6 +4652,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=15"></script>
+<script src="theme-v2.js?v=16"></script>
 </body>
 </html>

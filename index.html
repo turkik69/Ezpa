@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=16">
+<link rel="stylesheet" href="theme-v2.css?v=17">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -3457,7 +3457,7 @@ function scoreTableHtml(table) {
   </div>`;
 }
 
-function groupPanelHtml(title, matches, whichKey, table, roundByes) {
+function groupPanelHtml(title, matches, whichKey, table, roundByes, includeStandings = true) {
   const byRound = {};
   matches.forEach((m) => {
     const r = m.round || 1;
@@ -3513,6 +3513,17 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
     </div>
     <div class="group-tabs-label"><span class="inline-ui-icon ui-ball" aria-hidden="true"></span>المباريات والجولات</div>
     ${roundsHtml}
+    ${includeStandings ? scoreTableHtml(table) : ""}
+  </div>`;
+}
+
+function standingsPanelHtml(title, table, whichKey) {
+  const boxClass = whichKey === "A" ? "box-a" : "box-b";
+  return `<div class="group-box ${boxClass} standings-only-card">
+    <div class="standings-only-title">
+      <span class="group-letter">${whichKey}</span>
+      <div><strong>${title}</strong><small>الترتيب والنقاط والأهداف</small></div>
+    </div>
     ${scoreTableHtml(table)}
   </div>`;
 }
@@ -3567,8 +3578,13 @@ function groupsStageHtml() {
     </div>
 
     <div class="two-col premium-groups-grid">
-      ${groupPanelHtml('<span class="group-letter">A</span><span>المجموعة الأولى</span>', cur.matchesA, "A", tableA, cur.groupARoundByes)}
-      ${groupPanelHtml('<span class="group-letter">B</span><span>المجموعة الثانية</span>', cur.matchesB, "B", tableB, cur.groupBRoundByes)}
+      ${groupPanelHtml('<span class="group-letter">A</span><span>المجموعة الأولى</span>', cur.matchesA, "A", tableA, cur.groupARoundByes, false)}
+      ${groupPanelHtml('<span class="group-letter">B</span><span>المجموعة الثانية</span>', cur.matchesB, "B", tableB, cur.groupBRoundByes, false)}
+    </div>
+
+    <div class="stacked-standings">
+      ${standingsPanelHtml("ترتيب المجموعة الأولى", tableA, "A")}
+      ${standingsPanelHtml("ترتيب المجموعة الثانية", tableB, "B")}
     </div>
 
     <div class="groups-next-panel ${allPlayed?'ready':''}">
@@ -4652,6 +4668,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=16"></script>
+<script src="theme-v2.js?v=17"></script>
 </body>
 </html>

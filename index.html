@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=6">
+<link rel="stylesheet" href="theme-v2.css?v=7">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -3090,45 +3090,82 @@ function computeHistoricalStats(archive) {
 function membersStageHtml() {
   const confirmed = members.filter(m => m.confirmed);
   const unconfirmed = members.filter(m => !m.confirmed);
+  const guests = members.filter(m => m.is_guest);
+  const pct = members.length ? Math.round((confirmed.length / members.length) * 100) : 0;
 
-  const memberRowHtml = (m) => `
-    <div class="member-row ${m.confirmed ? 'confirmed' : ''}">
+  const memberRowHtml = (m) => {
+    const initial = (m.name || "?").trim().charAt(0) || "?";
+    return `
+    <div class="member-row premium-member ${m.confirmed ? 'confirmed' : ''}" data-status="${m.confirmed ? 'confirmed' : 'waiting'}">
+      <div class="member-avatar">${clubLogoHtml(m.club, 'club-logo-lg') || `<span>${escapeHtml(initial)}</span>`}</div>
       <div class="member-info">
         <div class="member-name">${coloredNameHtml(m.name)}${m.is_guest ? '<span class="guest-tag">ضيف</span>' : ''}</div>
-        <div class="member-club">${clubLogoHtml(m.club)}<span>${escapeHtml(m.club)}</span></div>
+        <div class="member-club">${clubLogoHtml(m.club, 'club-logo-sm')}<span>${escapeHtml(m.club)}</span></div>
       </div>
-      <button class="confirm-btn ${m.confirmed ? 'confirmed-btn' : ''}" onclick="toggleConfirm('${m.id}')">
-        ${m.confirmed ? '✓ مؤكد' : 'تأكيد الحضور'}
-      </button>
-      ${m.is_core ? "" : `<button class="member-remove-btn" onclick="removeMember('${m.id}')" title="حذف العضو">✕</button>`}
+      <div class="member-actions">
+        <button class="confirm-btn ${m.confirmed ? 'confirmed-btn' : ''}" onclick="toggleConfirm('${m.id}')">
+          <span class="status-dot" aria-hidden="true"></span>
+          ${m.confirmed ? 'مؤكد' : 'تأكيد'}
+        </button>
+        ${m.is_core ? "" : `<button class="member-remove-btn premium-remove" onclick="removeMember('${m.id}')" title="حذف العضو">✕</button>`}
+      </div>
     </div>`;
+  };
 
-  return `<div class="card theme-members">
-    <div class="section-icon-title"><span class="icon ui-icon ui-members" aria-hidden="true"></span>قائمة الأعضاء والأندية</div>
-    <p class="hint">اضغط "تأكيد الحضور" بجانب اسمك ليوم اللعب (الجمعة أو أي يوم نلعب فيه). كل عضو يأكد حضوره هو بس — تأكيد حضور شخص ثاني صلاحية مشرفين فقط. التأكيدات تظل قائمة طول اليوم حتى لو لعبتوا أكثر من بطولة، ولا تتصفر إلا لما تضغطون "إنهاء يوم اللعب" تحت. الأعضاء الأساسيين محمين من الحذف؛ فقط الأعضاء أو الضيوف اللي تضيفهم بنفسك تقدر تحذفهم.</p>
-
-    <div class="section-title">مؤكدين الحضور (${confirmed.length})</div>
-    ${confirmed.length === 0 ? `<div class="empty-note">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
-
-    <div class="section-title">بانتظار التأكيد (${unconfirmed.length})</div>
-    ${unconfirmed.length === 0 ? `<div class="empty-note"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>الكل أكّد حضوره</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
-
-    <div class="add-member-box">
-      <div class="add-member-label">+ إضافة عضو أو ضيف جديد</div>
-      <div class="input-row">
-        <input class="text-input" id="memberNameInput" placeholder="الاسم" value="${escapeHtml(addMemberDraft.name)}" oninput="updateAddMemberDraft('name', this.value)">
-        <input class="text-input" id="memberClubInput" placeholder="النادي" value="${escapeHtml(addMemberDraft.club)}" oninput="updateAddMemberDraft('club', this.value)">
+  return `<div class="card theme-members members-home-card">
+    <div class="members-hero">
+      <div class="members-hero-copy">
+        <div class="section-icon-title"><span class="icon ui-icon ui-members" aria-hidden="true"></span>قائمة الأعضاء والأندية</div>
+        <p class="hint members-hero-hint">تأكيد الحضور سريع وواضح. كل عضو يؤكد نفسه، والمشرف فقط يقدر يؤكد عن غيره.</p>
       </div>
-      <label class="checkbox-row">
-        <input type="checkbox" id="memberGuestInput" ${addMemberDraft.isGuest ? "checked" : ""} onchange="updateAddMemberDraft('isGuest', this.checked)">
-        ضيف لهذا اليوم فقط (ينحذف تلقائياً عند إنهاء يوم اللعب)
-      </label>
-      <button class="primary-btn" style="width:100%" onclick="addMember()">+ إضافة إلى القائمة</button>
+      <div class="attendance-ring" style="--attendance:${pct}">
+        <div><strong>${pct}%</strong><span>حضور</span></div>
+      </div>
     </div>
 
-    <div class="archive-divider"></div>
-    <p class="hint" style="margin-bottom:10px;">لما تخلصون كل بطولات اليوم (مهما كان عددها)، اضغط الزر تحت عشان تصفّر التأكيدات استعداداً ليوم لعب جديد.</p>
-    <button class="cta-btn danger" onclick="endPlayDay()">إنهاء يوم اللعب وتصفير التأكيدات</button>
+    <div class="members-summary">
+      <div class="summary-tile"><span class="summary-icon ui-total"></span><strong>${members.length}</strong><small>إجمالي الأعضاء</small></div>
+      <div class="summary-tile success"><span class="summary-icon ui-check"></span><strong>${confirmed.length}</strong><small>مؤكدين</small></div>
+      <div class="summary-tile waiting"><span class="summary-icon ui-clock"></span><strong>${unconfirmed.length}</strong><small>بانتظار التأكيد</small></div>
+      <div class="summary-tile guest"><span class="summary-icon ui-guest"></span><strong>${guests.length}</strong><small>ضيوف</small></div>
+    </div>
+
+    <div class="member-section-head">
+      <div><span class="section-status green"></span><strong>مؤكدين الحضور</strong></div>
+      <span class="section-count">${confirmed.length}</span>
+    </div>
+    <div class="members-list confirmed-list">
+      ${confirmed.length === 0 ? `<div class="empty-note premium-empty">ما فيه أحد أكّد حضوره بعد</div>` : confirmed.map(m => memberRowHtml(m)).join("")}
+    </div>
+
+    <div class="member-section-head waiting-head">
+      <div><span class="section-status amber"></span><strong>بانتظار التأكيد</strong></div>
+      <span class="section-count">${unconfirmed.length}</span>
+    </div>
+    <div class="members-list waiting-list">
+      ${unconfirmed.length === 0 ? `<div class="empty-note premium-empty"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>الكل أكّد حضوره</div>` : unconfirmed.map(m => memberRowHtml(m)).join("")}
+    </div>
+
+    <div class="add-member-box premium-add-box">
+      <div class="add-member-head">
+        <span class="add-member-icon">+</span>
+        <div><strong>إضافة عضو أو ضيف</strong><small>أضف الاسم والنادي، ويمكن جعله ضيفًا ليوم اللعب فقط</small></div>
+      </div>
+      <div class="input-row">
+        <input class="text-input" id="memberNameInput" placeholder="اسم العضو" value="${escapeHtml(addMemberDraft.name)}" oninput="updateAddMemberDraft('name', this.value)">
+        <input class="text-input" id="memberClubInput" placeholder="اسم النادي" value="${escapeHtml(addMemberDraft.club)}" oninput="updateAddMemberDraft('club', this.value)">
+      </div>
+      <label class="checkbox-row premium-checkbox">
+        <input type="checkbox" id="memberGuestInput" ${addMemberDraft.isGuest ? "checked" : ""} onchange="updateAddMemberDraft('isGuest', this.checked)">
+        <span>ضيف لهذا اليوم فقط</span>
+      </label>
+      <button class="primary-btn add-member-submit" style="width:100%" onclick="addMember()"><span class="inline-add-plus">+</span>إضافة إلى القائمة</button>
+    </div>
+
+    <div class="day-end-panel">
+      <div class="day-end-copy"><strong>إنهاء يوم اللعب</strong><span>يصفّر التأكيدات فقط استعدادًا ليوم لعب جديد، ولا يحذف بيانات البطولات.</span></div>
+      <button class="cta-btn danger" onclick="endPlayDay()">إنهاء اليوم وتصفير التأكيدات</button>
+    </div>
   </div>`;
 }
 
@@ -4187,6 +4224,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=6"></script>
+<script src="theme-v2.js?v=7"></script>
 </body>
 </html>

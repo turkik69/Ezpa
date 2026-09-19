@@ -22,17 +22,8 @@
   }
 
   function enhanceTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      if (btn.dataset.v2Icon) return;
-      const text = btn.textContent.trim();
-      let kind = text.includes('الأعضاء') ? 'members' :
-                 text.includes('البطولة') ? 'tournament' :
-                 text.includes('التصنيفات') ? 'stats' :
-                 text.includes('ودية') ? 'friendly' : '';
-      if (!kind) return;
-      btn.insertAdjacentHTML('afterbegin', icon(kind));
-      btn.dataset.v2Icon = '1';
-    });
+    // Icons are now rendered purely with CSS masks so every render is stable.
+    // Keeping this no-op avoids a second DOM mutation/layout pass.
   }
 
   function enhanceA11y() {

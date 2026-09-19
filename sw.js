@@ -11,7 +11,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "دوري أبطال العزبة", body: "", url: "/" };
+  let data = { title: "دوري أبطال العزبة", body: "", url: "./index.html" };
   try {
     if (event.data) {
       data = { ...data, ...event.data.json() };
@@ -27,7 +27,7 @@ self.addEventListener("push", (event) => {
     badge: "icon-192.png",
     dir: "rtl",
     lang: "ar",
-    data: { url: data.url || "/" },
+    data: { url: data.url || "./index.html" },
     vibrate: [100, 50, 100],
   };
 
@@ -38,7 +38,8 @@ self.addEventListener("push", (event) => {
 // open, otherwise open a new one.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
+  const targetUrl = (event.notification.data && event.notification.data.url) || "./index.html";
+  const appUrl = (targetUrl === "/" || targetUrl === "") ? self.registration.scope : new URL(targetUrl, self.registration.scope).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
@@ -49,7 +50,7 @@ self.addEventListener("notificationclick", (event) => {
         }
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        return self.clients.openWindow(appUrl);
       }
     })
   );

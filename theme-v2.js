@@ -30,6 +30,16 @@
 
   function cleanClubLogo(img) {
     if (!img || img.dataset.cleanedLogo === '1') return;
+
+    // Al Sadd and Al Ain contain genuine white details that touch the raster edge.
+    // Preserve their source pixels exactly; edge flood-fill would otherwise erase
+    // parts of the crest and make the logo look washed-out or incomplete.
+    const clubName = (img.dataset.club || '').trim();
+    if (clubName === 'السد' || clubName === 'العين') {
+      img.dataset.cleanedLogo = '1';
+      return;
+    }
+
     const src = img.getAttribute('src') || '';
     if (!src.startsWith('data:image/')) {
       img.dataset.cleanedLogo = '1';

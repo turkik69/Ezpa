@@ -2653,3 +2653,79 @@ table.score-table{min-width:500px!important}
   .admin-action-btn{font-size:6.5px;padding:0 7px}
   .profile-security-grid{grid-template-columns:1fr}
 }
+
+
+/* ===== Group standings full-width stacked layout v15 ===== */
+/* Each group now gets the full screen width so standings remain readable. */
+.premium-groups-grid{
+  grid-template-columns:1fr!important;
+  gap:14px!important;
+}
+.premium-groups-grid .premium-group-panel{
+  width:100%!important;
+  max-width:none!important;
+}
+
+/* The standings table should fit its group card instead of forcing horizontal drag. */
+.premium-group-panel .score-table-scroll{
+  width:100%!important;
+  overflow-x:visible!important;
+}
+.premium-group-panel table.score-table{
+  width:100%!important;
+  min-width:0!important;
+  table-layout:fixed!important;
+}
+.premium-group-panel table.score-table th,
+.premium-group-panel table.score-table td{
+  padding-left:2px!important;
+  padding-right:2px!important;
+  white-space:nowrap;
+}
+.premium-group-panel table.score-table th:nth-child(1),
+.premium-group-panel table.score-table td:nth-child(1){width:7%!important}
+.premium-group-panel table.score-table th:nth-child(2),
+.premium-group-panel table.score-table td:nth-child(2){width:27%!important}
+.premium-group-panel table.score-table th:nth-child(n+3),
+.premium-group-panel table.score-table td:nth-child(n+3){width:8.25%!important}
+
+@media(max-width:600px){
+  .premium-groups-grid{gap:11px!important}
+  .premium-group-panel{padding:9px!important}
+  .premium-group-panel .standings-wrap{padding:6px 4px!important}
+  .premium-group-panel table.score-table{font-size:7.6px!important}
+  .premium-group-panel table.score-table th{
+    font-size:6.7px!important;
+    letter-spacing:-.15px!important;
+    padding:5px 0!important;
+  }
+  .premium-group-panel table.score-table td{
+    padding:6px 0!important;
+  }
+  .premium-group-panel .table-player-identity{
+    min-width:0!important;
+    gap:3px!important;
+  }
+  .premium-group-panel .table-player-identity .club-logo{
+    width:14px!important;
+    height:14px!important;
+  }
+  .premium-group-panel .table-player-identity>span{
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+  }
+  .premium-group-panel .table-rank{
+    width:16px!important;
+    height:16px!important;
+    font-size:6.5px!important;
+    border-radius:5px!important;
+    margin:auto;
+  }
+  .premium-group-panel .pts-pill{
+    min-width:20px!important;
+    height:18px!important;
+    padding:0 3px!important;
+    font-size:7px!important;
+  }
+}

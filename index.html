@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=9">
+<link rel="stylesheet" href="theme-v2.css?v=10">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -3424,10 +3424,16 @@ function wheelStageHtml() {
 }
 
 function scoreTableHtml(table) {
-  const rows = table.map((t,i) => `
-    <tr class="${i<2?'qualify-row':''}">
-      <td>${i+1}</td>
-      <td style="text-align:right">${coloredNameHtml(t.name)}</td>
+  const rows = table.map((t,i) => {
+    const member = findMemberByName(t.name);
+    const logo = member ? clubLogoHtml(member.club, 'club-logo-sm') : "";
+    const rankClass = i === 0 ? "rank-first" : i === 1 ? "rank-second" : "";
+    return `
+    <tr class="${i<2?'qualify-row':''} ${rankClass}">
+      <td><span class="table-rank">${i+1}</span></td>
+      <td class="table-player-cell">
+        <span class="table-player-identity">${logo}<span>${coloredNameHtml(t.name)}</span></span>
+      </td>
       <td>${t.played}</td>
       <td>${t.w}</td>
       <td>${t.d}</td>
@@ -3435,18 +3441,24 @@ function scoreTableHtml(table) {
       <td>${t.gf}</td>
       <td>${t.ga}</td>
       <td>${t.gd>0?'+'+t.gd:t.gd}</td>
-      <td style="font-weight:700">${t.pts}</td>
-    </tr>`).join("");
-  return `<table class="score-table">
-    <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>ت</th><th>خ</th><th>له</th><th>عليه</th><th>فأ</th><th>نقاط</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+      <td><strong class="pts-pill">${t.pts}</strong></td>
+    </tr>`;
+  }).join("");
+  return `<div class="standings-wrap">
+    <div class="standings-head">
+      <div><span class="standings-icon"></span><strong>الترتيب المباشر</strong></div>
+      <small>أول مركزين يتأهلون</small>
+    </div>
+    <div class="score-table-scroll">
+      <table class="score-table">
+        <thead><tr><th>#</th><th>اللاعب</th><th>لعب</th><th>ف</th><th>ت</th><th>خ</th><th>له</th><th>عليه</th><th>فأ</th><th>نقاط</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 function groupPanelHtml(title, matches, whichKey, table, roundByes) {
-  // Group matches by round number so they can be rendered as separate
-  // "جولة" sections with a visual divider between them, matching how the
-  // matches would actually be played matchday by matchday.
   const byRound = {};
   matches.forEach((m) => {
     const r = m.round || 1;
@@ -3454,33 +3466,53 @@ function groupPanelHtml(title, matches, whichKey, table, roundByes) {
     byRound[r].push(m);
   });
   const roundNumbers = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+  const playedCount = matches.filter(m => m.scoreA != null && m.scoreB != null).length;
+  const progress = matches.length ? Math.round((playedCount / matches.length) * 100) : 0;
 
   const roundsHtml = roundNumbers.map((roundNum) => {
     const roundMatches = byRound[roundNum];
-    const matchRows = roundMatches.map(m => `
-      <div class="match-row">
+    const roundPlayed = roundMatches.filter(m => m.scoreA != null && m.scoreB != null).length;
+    const matchRows = roundMatches.map((m,idx) => {
+      const played = m.scoreA != null && m.scoreB != null;
+      return `
+      <div class="match-row premium-match-row ${played ? 'is-played' : ''}">
+        <span class="match-sequence">${idx+1}</span>
         <span class="match-name">${playerIdentityHtml(m.a.name, true)}</span>
-        ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
-        <span class="vs">–</span>
-        ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
+        <div class="match-score-zone">
+          ${scoreSelectHtml(m.scoreA, `onchange="updateMatchField('${whichKey}','${m.id}','scoreA',this.value)"`)}
+          <span class="vs">–</span>
+          ${scoreSelectHtml(m.scoreB, `onchange="updateMatchField('${whichKey}','${m.id}','scoreB',this.value)"`)}
+        </div>
         <span class="match-name">${playerIdentityHtml(m.b.name, true)}</span>
-      </div>`).join("");
+        <span class="match-state-dot" aria-hidden="true"></span>
+      </div>`;
+    }).join("");
 
     const byePlayer = roundByes && roundByes[roundNum];
     const byeHtml = byePlayer
-      ? `<div class="bye-note"><span class="inline-ui-icon ui-rest" aria-hidden="true"></span>${coloredNameHtml(byePlayer.name)} مستريح هذي الجولة (باي)</div>`
+      ? `<div class="bye-note premium-bye"><span class="inline-ui-icon ui-rest" aria-hidden="true"></span>${playerIdentityHtml(byePlayer.name, true)}<span>راحة هذه الجولة</span></div>`
       : "";
 
-    return `<div class="round-block">
-      <div class="round-label">الجولة ${roundNum}</div>
+    return `<div class="round-block premium-round">
+      <div class="round-label premium-round-label">
+        <span>الجولة ${roundNum}</span>
+        <em>${roundPlayed}/${roundMatches.length}</em>
+      </div>
       <div class="match-list">${matchRows}</div>
       ${byeHtml}
     </div>`;
   }).join("");
 
-  const boxClass = whichKey === "A" ? "box-a" : whichKey === "B" ? "box-b" : "";
-  return `<div class="group-box ${boxClass}">
-    <h3 class="group-title">${title}</h3>
+  const boxClass = whichKey === "A" ? "box-a" : whichKey === "B" ? "box-b" : "box-single";
+  return `<div class="group-box ${boxClass} premium-group-panel">
+    <div class="group-panel-top">
+      <h3 class="group-title">${title}</h3>
+      <div class="group-progress-mini">
+        <span><i style="width:${progress}%"></i></span>
+        <small>${playedCount}/${matches.length}</small>
+      </div>
+    </div>
+    <div class="group-tabs-label"><span class="inline-ui-icon ui-ball" aria-hidden="true"></span>المباريات والجولات</div>
     ${roundsHtml}
     ${scoreTableHtml(table)}
   </div>`;
@@ -3490,44 +3522,115 @@ function groupsStageHtml() {
   const cur = appState.current;
   const tableA = standingsFor(cur.groupA, cur.matchesA, []);
   const tableB = standingsFor(cur.groupB, cur.matchesB, []);
-  const allAPlayed = cur.matchesA.length > 0 && cur.matchesA.every(m => m.scoreA != null && m.scoreB != null);
-  const allBPlayed = cur.matchesB.length > 0 && cur.matchesB.every(m => m.scoreA != null && m.scoreB != null);
+  const playedA = cur.matchesA.filter(m => m.scoreA != null && m.scoreB != null).length;
+  const playedB = cur.matchesB.filter(m => m.scoreA != null && m.scoreB != null).length;
+  const totalMatches = cur.matchesA.length + cur.matchesB.length;
+  const playedMatches = playedA + playedB;
+  const progress = totalMatches ? Math.round((playedMatches / totalMatches) * 100) : 0;
+  const allAPlayed = cur.matchesA.length > 0 && playedA === cur.matchesA.length;
+  const allBPlayed = cur.matchesB.length > 0 && playedB === cur.matchesB.length;
+  const allPlayed = allAPlayed && allBPlayed;
 
-  return `<div class="card theme-groups">
-    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-groups" aria-hidden="true"></span>دوري المجموعات</div>
-    <p class="hint">اختر نتيجة كل مباراة من القوائم. ترتيب الصعود: نقاط ← أهداف مسجلة ← قرعة عشوائية عند التعادل التام.</p>
-    <div class="two-col">
-      ${groupPanelHtml('<span class="group-letter">A</span> المجموعة الأولى', cur.matchesA, "A", tableA, cur.groupARoundByes)}
-      ${groupPanelHtml('<span class="group-letter">B</span> المجموعة الثانية', cur.matchesB, "B", tableB, cur.groupBRoundByes)}
+  return `<div class="card theme-groups groups-page-card">
+    <div class="groups-hero">
+      <div>
+        <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
+        <div class="section-icon-title"><span class="icon ui-icon ui-groups" aria-hidden="true"></span>دوري المجموعات</div>
+        <p class="hint groups-hero-hint">سجل نتائج المباريات جولة بجولة، والترتيب يتحدث مباشرة بعد كل نتيجة.</p>
+      </div>
+      <div class="groups-progress-orb" style="--groups-progress:${progress}">
+        <strong>${progress}%</strong><span>المباريات</span>
+      </div>
     </div>
-    <button class="cta-btn" ${!(allAPlayed && allBPlayed) ? "disabled" : ""} onclick="goToKnockout()">الانتقال لنصف النهائي ←</button>
-    ${!(allAPlayed && allBPlayed) ? `<div class="empty-note">أكمل جميع نتائج المجموعتين للمتابعة</div>` : ""}
+
+    <div class="groups-overview">
+      <div class="groups-overview-card">
+        <span class="overview-icon ui-fixtures"></span>
+        <div><strong>${playedMatches}/${totalMatches}</strong><small>مباريات مكتملة</small></div>
+      </div>
+      <div class="groups-overview-card overview-a">
+        <span class="overview-letter">A</span>
+        <div><strong>${playedA}/${cur.matchesA.length}</strong><small>المجموعة الأولى</small></div>
+      </div>
+      <div class="groups-overview-card overview-b">
+        <span class="overview-letter">B</span>
+        <div><strong>${playedB}/${cur.matchesB.length}</strong><small>المجموعة الثانية</small></div>
+      </div>
+      <div class="groups-overview-card ${allPlayed?'overview-ready':''}">
+        <span class="overview-icon ui-nextstage"></span>
+        <div><strong>${allPlayed?'جاهز':'انتظار'}</strong><small>نصف النهائي</small></div>
+      </div>
+    </div>
+
+    <div class="groups-rule-strip">
+      <span class="groups-rule-icon">i</span>
+      <span>ترتيب الصعود: النقاط ← الأهداف المسجلة ← قرعة عشوائية عند التعادل التام.</span>
+    </div>
+
+    <div class="two-col premium-groups-grid">
+      ${groupPanelHtml('<span class="group-letter">A</span><span>المجموعة الأولى</span>', cur.matchesA, "A", tableA, cur.groupARoundByes)}
+      ${groupPanelHtml('<span class="group-letter">B</span><span>المجموعة الثانية</span>', cur.matchesB, "B", tableB, cur.groupBRoundByes)}
+    </div>
+
+    <div class="groups-next-panel ${allPlayed?'ready':''}">
+      <div class="groups-next-copy">
+        <strong>${allPlayed?'اكتملت مرحلة المجموعات':'المرحلة التالية مقفلة مؤقتاً'}</strong>
+        <span>${allPlayed?'أصبح ترتيب المجموعتين نهائيًا ويمكن الانتقال إلى نصف النهائي.':`تبقّى ${Math.max(0,totalMatches-playedMatches)} مباراة لإكمال دور المجموعات.`}</span>
+      </div>
+      <button class="cta-btn groups-next-btn" ${!allPlayed ? "disabled" : ""} onclick="goToKnockout()">
+        <span class="next-stage-icon"></span>الانتقال لنصف النهائي
+      </button>
+    </div>
   </div>`;
 }
 
 function singleGroupStageHtml() {
   const cur = appState.current;
   const table = standingsFor(cur.players, cur.singleMatches, []);
-  const allPlayed = cur.singleMatches.length > 0 && cur.singleMatches.every(m => m.scoreA != null && m.scoreB != null);
+  const played = cur.singleMatches.filter(m => m.scoreA != null && m.scoreB != null).length;
+  const total = cur.singleMatches.length;
+  const progress = total ? Math.round((played / total) * 100) : 0;
+  const allPlayed = total > 0 && played === total;
   const notEnoughForKnockout = allPlayed && cur.players.length < 4;
   const exactlyFour = allPlayed && cur.players.length === 4;
   const canGoKnockout = allPlayed && cur.players.length > 4;
+
   let actionHtml;
   if (notEnoughForKnockout) {
-    actionHtml = `<button class="cta-btn" onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button><div class="empty-note">عدد المشاركين أقل من 4، فما فيه إقصائي — البطل يتحدد من الترتيب العام مباشرة.</div>`;
+    actionHtml = `<button class="cta-btn groups-next-btn" onclick="finishSingleGroup()">إنهاء البطولة وتتويج البطل ←</button><div class="groups-action-note">عدد المشاركين أقل من 4، لذلك يتم تحديد البطل مباشرة من الترتيب العام.</div>`;
   } else if (exactlyFour) {
-    actionHtml = `<button class="cta-btn" onclick="goToFinalDirectlyFromSingle()">الانتقال للنهائي مباشرة ←</button><div class="empty-note">4 مشاركين بالضبط — الأول والثاني بالترتيب يتأهلون للنهائي مباشرة بدون نصف نهائي.</div>`;
+    actionHtml = `<button class="cta-btn groups-next-btn" onclick="goToFinalDirectlyFromSingle()">الانتقال للنهائي مباشرة ←</button><div class="groups-action-note">الأول والثاني يتأهلان مباشرة للنهائي.</div>`;
   } else {
-    actionHtml = `<button class="cta-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`;
+    actionHtml = `<button class="cta-btn groups-next-btn" ${!canGoKnockout ? "disabled" : ""} onclick="goToKnockoutFromSingle()">الانتقال لنصف النهائي ←</button>`;
   }
-  return `<div class="card theme-groups">
-    <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
-    <div class="section-icon-title"><span class="icon ui-icon ui-single" aria-hidden="true"></span>مجموعة واحدة — الكل ضد الكل</div>
-    <p class="hint">جدول مباريات عشوائي بين جميع المشاركين، بدون قرعة، مقسّم لجولات. أول 4 بالترتيب العام يصعدون للإقصائي: الأول يقابل الرابع، الثاني يقابل الثالث (إلا لو كان العدد الكلي 4 بالضبط، فالأول والثاني يتأهلون للنهائي مباشرة).</p>
-    ${groupPanelHtml(`جدول المباريات (${cur.players.length} مشاركين)`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
-    ${actionHtml}
-    ${!allPlayed ? `<div class="empty-note">أكمل جميع نتائج الجدول للمتابعة</div>` : ""}
+
+  return `<div class="card theme-groups groups-page-card single-group-page">
+    <div class="groups-hero">
+      <div>
+        <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
+        <div class="section-icon-title"><span class="icon ui-icon ui-single" aria-hidden="true"></span>مجموعة واحدة — الكل ضد الكل</div>
+        <p class="hint groups-hero-hint">كل لاعب يواجه بقية المشاركين، والترتيب يتحدث مباشرة بعد كل نتيجة.</p>
+      </div>
+      <div class="groups-progress-orb" style="--groups-progress:${progress}">
+        <strong>${progress}%</strong><span>المباريات</span>
+      </div>
+    </div>
+
+    <div class="groups-overview single-overview">
+      <div class="groups-overview-card"><span class="overview-icon ui-fixtures"></span><div><strong>${played}/${total}</strong><small>مباريات مكتملة</small></div></div>
+      <div class="groups-overview-card"><span class="overview-icon ui-members-mini"></span><div><strong>${cur.players.length}</strong><small>المشاركون</small></div></div>
+      <div class="groups-overview-card ${allPlayed?'overview-ready':''}"><span class="overview-icon ui-nextstage"></span><div><strong>${allPlayed?'جاهز':'انتظار'}</strong><small>المرحلة التالية</small></div></div>
+    </div>
+
+    ${groupPanelHtml(`<span class="group-letter">1</span><span>جدول المباريات · ${cur.players.length} مشاركين</span>`, cur.singleMatches, "SINGLE", table, cur.singleRoundByes)}
+
+    <div class="groups-next-panel ${allPlayed?'ready':''}">
+      <div class="groups-next-copy">
+        <strong>${allPlayed?'اكتملت جميع المباريات':'أكمل نتائج الجدول'}</strong>
+        <span>${allPlayed?'الترتيب النهائي للمجموعة أصبح جاهزًا.':`تبقّى ${Math.max(0,total-played)} مباراة.`}</span>
+      </div>
+      ${actionHtml}
+    </div>
   </div>`;
 }
 
@@ -4369,6 +4472,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=9"></script>
+<script src="theme-v2.js?v=10"></script>
 </body>
 </html>

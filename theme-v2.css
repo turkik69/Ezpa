@@ -419,3 +419,46 @@ main>.card,main>.sidebar-card{animation:ezbaIn .28s ease both}
 @supports not (color:color-mix(in srgb,#fff 50%,#000)){
   .tab-btn.active,.cta-btn,.primary-btn,.spin-btn{background:linear-gradient(135deg,#35c2ff,#ffc857)!important}
 }
+
+
+/* iOS / PWA status-bar protection: keep app controls visually below the
+   system clock / signal / battery area and avoid translucent blur overlap. */
+body{
+  padding-top:calc(18px + env(safe-area-inset-top, 0px))!important;
+}
+.topbar{
+  margin-top:max(2px, env(safe-area-inset-top, 0px))!important;
+  min-height:54px!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  background:rgba(7,17,31,.96)!important;
+  border-color:rgba(255,255,255,.11)!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.05)!important;
+}
+.topbar .back-btn,
+.topbar .auth-btn{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  filter:none!important;
+  text-shadow:none!important;
+  opacity:1!important;
+  -webkit-font-smoothing:antialiased;
+}
+@media (display-mode: standalone){
+  body{
+    padding-top:calc(22px + env(safe-area-inset-top, 0px))!important;
+  }
+  .topbar{
+    margin-top:4px!important;
+  }
+}
+@media (max-width:600px){
+  .topbar{
+    padding-top:8px!important;
+    padding-bottom:8px!important;
+  }
+  .back-btn,.auth-btn{
+    min-height:44px!important;
+    font-size:13px!important;
+  }
+}

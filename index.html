@@ -2155,9 +2155,7 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
     // as the demolition/family-derby notifications elsewhere, just a fixed
     // one-off line rather than a rotating phrase pool since only one exact
     // wording was asked for here.
-    const bodyText = champion.name === "عفان"
-      ? "البطل عفان للاسف والله ماتستاهلها ياجبان"
-      : `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`;
+    const bodyText = `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`;
     sendPushNotification(`👑 بطل ${cur.name}${officialTag}`, bodyText);
     celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
     render();

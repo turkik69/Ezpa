@@ -2274,14 +2274,14 @@ function getAudioCtx() {
 }
 
 
-/* ============ Entrance anthem clip ============
-   Uses the short instrumental clip supplied for this app.
+/* ============ Entrance anthem ============
+   Uses the complete instrumental track supplied for this app.
    Playback starts only after the member taps the entry button because
    iPhone/Safari and installed PWAs block unprompted autoplay. */
 let entranceThemeStarted = false;
 let entranceThemePlaying = false;
 let entranceThemeAudio = null;
-const ENTRANCE_THEME_FILE = "audio/oman-anthem-intro.mp3?v=20";
+const ENTRANCE_THEME_FILE = "audio/oman-anthem-full.mp3?v=21";
 
 function setEntranceMusicUi(state) {
   let btn = document.getElementById("entranceMusicControl");
@@ -2388,7 +2388,7 @@ function showEntranceMusicGate() {
       <div class="entrance-gate-emblem"><span class="badge-trophy-3d" aria-hidden="true"></span></div>
       <small>دوري أبطال العزبة</small>
       <strong>أهلاً بك</strong>
-      <p>اضغط للدخول وتشغيل بداية النشيد السلطاني.</p>
+      <p>اضغط للدخول وتشغيل النشيد السلطاني كاملاً.</p>
       <button type="button" id="entranceGateStartBtn">
         <span class="entrance-play-icon" aria-hidden="true"></span>
         دخول التطبيق

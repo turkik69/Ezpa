@@ -2447,23 +2447,76 @@ function playEntranceTheme() {
   }, ENTRANCE_THEME_DURATION * 1000);
 }
 
-function armEntranceTheme() {
-  // Try immediately (works in some installed PWAs / previously unlocked contexts).
-  try { playEntranceTheme(); } catch (e) {}
-
-  // If autoplay is blocked, the very first user interaction starts it.
-  const unlock = () => {
-    try {
-      const ctx = getAudioCtx();
-      Promise.resolve(ctx.resume()).finally(() => {
-        if (!entranceThemeStarted) playEntranceTheme();
-      });
-    } catch (e) {}
-  };
-  document.addEventListener("pointerdown", unlock, { once:true, capture:true });
-  document.addEventListener("touchstart", unlock, { once:true, capture:true, passive:true });
-  document.addEventListener("keydown", unlock, { once:true, capture:true });
+function dismissEntranceMusicGate() {
+  const gate = document.getElementById("entranceMusicGate");
+  if (!gate) return;
+  gate.classList.add("leaving");
+  setTimeout(() => gate.remove(), 260);
 }
+
+function startEntranceThemeFromGesture() {
+  try {
+    const ctx = getAudioCtx();
+    const start = () => {
+      if (!entranceThemeStarted) playEntranceTheme();
+      dismissEntranceMusicGate();
+    };
+    if (ctx.state === "running") {
+      start();
+    } else {
+      const resumed = ctx.resume();
+      if (resumed && typeof resumed.then === "function") {
+        resumed.then(start).catch(() => dismissEntranceMusicGate());
+      } else {
+        start();
+      }
+    }
+  } catch (e) {
+    dismissEntranceMusicGate();
+  }
+}
+
+function showEntranceMusicGate() {
+  if (entranceThemeStarted || document.getElementById("entranceMusicGate")) return;
+  const gate = document.createElement("div");
+  gate.id = "entranceMusicGate";
+  gate.className = "entrance-music-gate";
+  gate.innerHTML = `
+    <div class="entrance-gate-card">
+      <div class="entrance-gate-emblem"><span class="badge-trophy-3d" aria-hidden="true"></span></div>
+      <small>دوري أبطال العزبة</small>
+      <strong>أهلاً بك</strong>
+      <p>اضغط للدخول وتشغيل موسيقى الافتتاح.</p>
+      <button type="button" id="entranceGateStartBtn">
+        <span class="entrance-play-icon" aria-hidden="true"></span>
+        دخول التطبيق
+      </button>
+    </div>
+  `;
+  document.body.appendChild(gate);
+  const btn = gate.querySelector("#entranceGateStartBtn");
+  if (btn) {
+    // The click itself is the required user gesture on iPhone/Safari.
+    btn.addEventListener("click", startEntranceThemeFromGesture, { once:true });
+    btn.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      startEntranceThemeFromGesture();
+    }, { once:true, passive:false });
+  }
+}
+
+function armEntranceTheme() {
+  // Autoplay is blocked on iPhone/Safari in a fresh session.
+  // Try it for platforms that permit it; otherwise present one clear entry tap.
+  try {
+    playEntranceTheme();
+  } catch (e) {}
+
+  if (!entranceThemeStarted) {
+    showEntranceMusicGate();
+  }
+}
+
 
 function playTick(volume) {
   try {

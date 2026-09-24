@@ -2275,70 +2275,8 @@ function getAudioCtx() {
    because the audio engine lives outside the rendered app DOM. */
 let entranceThemeStarted = false;
 let entranceThemePlaying = false;
-let entranceThemeMaster = null;
-let entranceThemeSources = [];
-let entranceThemeTimer = null;
-const ENTRANCE_THEME_DURATION = 18.8;
-
-function entranceNote(ctx, master, when, freq, duration, volume, type = "triangle") {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, when);
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(type === "sawtooth" ? 1850 : 2400, when);
-  filter.Q.value = 0.7;
-  gain.gain.setValueAtTime(0.0001, when);
-  gain.gain.exponentialRampToValueAtTime(volume, when + 0.035);
-  gain.gain.setValueAtTime(volume, Math.max(when + 0.05, when + duration * 0.68));
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(master);
-  osc.start(when);
-  osc.stop(when + duration + 0.03);
-  entranceThemeSources.push(osc);
-}
-
-function entrancePluck(ctx, master, when, freq, volume = 0.07) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-  osc.type = "triangle";
-  osc.frequency.value = freq;
-  filter.type = "bandpass";
-  filter.frequency.value = Math.min(2800, freq * 3.2);
-  filter.Q.value = 1.15;
-  gain.gain.setValueAtTime(volume, when);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.32);
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(master);
-  osc.start(when);
-  osc.stop(when + 0.34);
-  entranceThemeSources.push(osc);
-}
-
-function entranceDrum(ctx, master, when, kind = "low", volume = 0.10) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  if (kind === "low") {
-    osc.frequency.setValueAtTime(115, when);
-    osc.frequency.exponentialRampToValueAtTime(52, when + 0.16);
-  } else {
-    osc.frequency.setValueAtTime(210, when);
-    osc.frequency.exponentialRampToValueAtTime(100, when + 0.08);
-  }
-  gain.gain.setValueAtTime(volume, when);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + (kind === "low" ? 0.22 : 0.11));
-  osc.connect(gain);
-  gain.connect(master);
-  osc.start(when);
-  osc.stop(when + 0.24);
-  entranceThemeSources.push(osc);
-}
+let entranceThemeAudio = null;
+const ENTRANCE_THEME_FILE = "audio/ezpa-entry-fanfare.wav?v=1";
 
 function setEntranceMusicUi(state) {
   let btn = document.getElementById("entranceMusicControl");
@@ -2359,92 +2297,47 @@ function setEntranceMusicUi(state) {
 }
 
 function stopEntranceTheme(byUser = false) {
-  if (!entranceThemePlaying && !entranceThemeMaster) return;
   entranceThemePlaying = false;
-  try {
-    const ctx = audioCtx;
-    if (ctx && entranceThemeMaster) {
-      const now = ctx.currentTime;
-      entranceThemeMaster.gain.cancelScheduledValues(now);
-      entranceThemeMaster.gain.setValueAtTime(Math.max(0.0001, entranceThemeMaster.gain.value || 0.22), now);
-      entranceThemeMaster.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    }
-    setTimeout(() => {
-      entranceThemeSources.forEach(src => { try { src.stop(); } catch (e) {} });
-      entranceThemeSources = [];
-      entranceThemeMaster = null;
-    }, 260);
-  } catch (e) {}
-  if (entranceThemeTimer) {
-    clearTimeout(entranceThemeTimer);
-    entranceThemeTimer = null;
+  if (entranceThemeAudio) {
+    try {
+      entranceThemeAudio.pause();
+      entranceThemeAudio.currentTime = 0;
+    } catch (e) {}
   }
   setEntranceMusicUi("stopped");
 }
 
 function playEntranceTheme() {
   if (entranceThemeStarted) return;
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-
-  // iOS/Safari blocks Web Audio until the first user gesture.
-  if (ctx.state !== "running") return;
 
   entranceThemeStarted = true;
-  entranceThemePlaying = true;
-  entranceThemeSources = [];
+  entranceThemeAudio = new Audio(ENTRANCE_THEME_FILE);
+  entranceThemeAudio.preload = "auto";
+  entranceThemeAudio.volume = 0.72;
 
-  const master = ctx.createGain();
-  entranceThemeMaster = master;
-  master.gain.setValueAtTime(0.0001, ctx.currentTime);
-  master.gain.exponentialRampToValueAtTime(0.24, ctx.currentTime + 0.25);
-  master.connect(ctx.destination);
+  entranceThemeAudio.addEventListener("play", () => {
+    entranceThemePlaying = true;
+    setEntranceMusicUi("playing");
+  }, { once:true });
 
-  const t0 = ctx.currentTime + 0.06;
-
-  // Ceremonial brass lead — original Hijaz-flavoured motif.
-  const lead = [
-    [0.00, 293.66, .55],[0.60, 311.13, .28],[0.92, 369.99, .42],[1.40, 392.00, .72],
-    [2.28, 369.99, .34],[2.68, 311.13, .34],[3.08, 293.66, .74],
-    [4.00, 392.00, .48],[4.54, 440.00, .34],[4.94, 466.16, .50],[5.50, 440.00, .35],[5.92, 392.00, .78],
-    [6.88, 369.99, .34],[7.28, 392.00, .34],[7.68, 440.00, .60],[8.36, 466.16, .84],
-    [9.36, 440.00, .32],[9.76, 392.00, .32],[10.16, 369.99, .48],[10.72, 311.13, .34],[11.12, 293.66, .78],
-    [12.08, 392.00, .38],[12.52, 440.00, .38],[12.96, 466.16, .58],[13.62, 523.25, .88],
-    [14.70, 466.16, .36],[15.12, 440.00, .36],[15.54, 392.00, .42],[16.02, 369.99, .42],[16.50, 293.66, 1.60]
-  ];
-  lead.forEach(([t,f,d]) => {
-    entranceNote(ctx, master, t0+t, f, d, 0.085, "sawtooth");
-    entranceNote(ctx, master, t0+t, f/2, d, 0.032, "triangle");
+  entranceThemeAudio.addEventListener("ended", () => {
+    entranceThemePlaying = false;
+    setEntranceMusicUi("stopped");
   });
 
-  // Oud-like plucked support pattern.
-  const plucks = [
-    146.83,196.00,220.00,196.00,155.56,196.00,233.08,196.00
-  ];
-  for (let bar=0; bar<9; bar++) {
-    plucks.forEach((f,i) => {
-      entrancePluck(ctx, master, t0 + bar*2.0 + i*0.24, f, i%2===0 ? 0.050 : 0.038);
+  entranceThemeAudio.addEventListener("error", () => {
+    entranceThemePlaying = false;
+    setEntranceMusicUi("stopped");
+  });
+
+  const p = entranceThemeAudio.play();
+  if (p && typeof p.catch === "function") {
+    p.catch(() => {
+      entranceThemeStarted = false;
+      entranceThemePlaying = false;
+      setEntranceMusicUi("stopped");
     });
   }
-
-  // Omani ceremonial drum pulse, restrained and steady.
-  for (let beat=0; beat<36; beat++) {
-    const t = t0 + beat*0.50;
-    entranceDrum(ctx, master, t, beat%4===0 ? "low" : "high", beat%4===0 ? 0.105 : 0.052);
-  }
-
-  // Soft final chord.
-  [293.66, 369.99, 440.00, 587.33].forEach((f,i) => {
-    entranceNote(ctx, master, t0 + 17.15, f, 1.55, 0.050 - i*0.006, "triangle");
-  });
-
-  setEntranceMusicUi("playing");
-  entranceThemeTimer = setTimeout(() => {
-    entranceThemePlaying = false;
-    entranceThemeMaster = null;
-    entranceThemeSources = [];
-    setEntranceMusicUi("stopped");
-  }, ENTRANCE_THEME_DURATION * 1000);
 }
 
 function dismissEntranceMusicGate() {

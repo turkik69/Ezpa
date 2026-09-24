@@ -1348,10 +1348,10 @@ const ATTENDANCE_JOKES = {
     "يحيى بالملعب، شغل التيكي تاكا يبدأ الحين",
   ],
   "تركي": [
-    "الملك سجل حضوره، قفوا احتراماً له",
-    "الملك حضر للميدان، جهزوا التحية قبل المباراة",
+    "تركي سجل حضوره، قفوا احتراماً للملك",
+    "تركي سجل حضوره، الملك حضر للميدان وجهزوا التحية قبل المباراة",
     "تركي سجل حضوره، حضرة الملك وصلت",
-    "الملك في الملعب اليوم، الباقي يعرف واجبه",
+    "تركي سجل حضوره، الملك في الملعب اليوم والباقي يعرف واجبه",
   ],
   "نصر": [
     "نصر سجل حضوره واستعدوا لهجمات سريعة ما تعرفون منها",
@@ -1391,8 +1391,14 @@ const ATTENDANCE_JOKES = {
 function pickAttendanceJoke(name) {
   const entry = ATTENDANCE_JOKES[name];
   if (!entry) return null;
-  if (Array.isArray(entry)) return entry[Math.floor(Math.random() * entry.length)];
-  return entry;
+  const picked = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry;
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return picked;
+  // Every attendance notification must explicitly identify who checked in.
+  // If the custom joke already contains the member name, keep it as-is;
+  // otherwise prefix it with "<name> سجل حضوره، ...".
+  if (picked.includes(cleanName)) return picked;
+  return `${cleanName} سجل حضوره، ${picked.replace(/^[،,\s]+/, "")}`;
 }
 
 // Central permission check. `level` is "member" (any logged-in user) or

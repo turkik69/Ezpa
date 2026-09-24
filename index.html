@@ -1348,10 +1348,10 @@ const ATTENDANCE_JOKES = {
     "يحيى بالملعب، شغل التيكي تاكا يبدأ الحين",
   ],
   "تركي": [
-    "تركي سجل حضوره قابلو عماركم",
-    "تركي وصل! استعدوا، الليلة صعبة عليكم",
-    "تركي بالملعب، اللي يواجهه يدعي له بالسلامة",
-    "تركي سجل حضوره، شدوا الحيل من الحين",
+    "الملك سجل حضوره، قفوا احتراماً له",
+    "الملك حضر للميدان، جهزوا التحية قبل المباراة",
+    "تركي سجل حضوره، حضرة الملك وصلت",
+    "الملك في الملعب اليوم، الباقي يعرف واجبه",
   ],
   "نصر": [
     "نصر سجل حضوره واستعدوا لهجمات سريعة ما تعرفون منها",
@@ -2155,8 +2155,13 @@ async function finishTournament(champion, runnerUp, semifinalistsOut, finalStand
     // as the demolition/family-derby notifications elsewhere, just a fixed
     // one-off line rather than a rotating phrase pool since only one exact
     // wording was asked for here.
-    const bodyText = `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`;
-    sendPushNotification(`👑 بطل ${cur.name}${officialTag}`, bodyText);
+    const bodyText = champion.name === "تركي"
+      ? "الملك أخذ البطولة، ما في شي جديد.. عادات وتقاليد"
+      : `${champion.name} توّج بطلاً!${firstTitleHint} ${runnerUp ? "الوصيف: " + runnerUp.name : ""}`;
+    const pushTitle = champion.name === "تركي"
+      ? `👑 الملك بطل ${cur.name}${officialTag}`
+      : `👑 بطل ${cur.name}${officialTag}`;
+    sendPushNotification(pushTitle, bodyText);
     celebration = { championName: champion.name, runnerUpName: runnerUp?.name || null, tournamentName: cur.name };
     render();
     playChampionFanfare();

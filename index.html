@@ -2282,7 +2282,7 @@ function getAudioCtx() {
 let entranceThemeStarted = false;
 let entranceThemePlaying = false;
 let entranceThemeAudio = null;
-const ENTRANCE_THEME_FILE = "audio/ezpa-entry-fanfare.wav?v=1";
+const ENTRANCE_THEME_FILE = "audio/ezpa-entry-fanfare.wav?v=2";
 
 function setEntranceMusicUi(state) {
   let btn = document.getElementById("entranceMusicControl");
@@ -2324,6 +2324,7 @@ function playEntranceTheme() {
   entranceThemeAudio.addEventListener("play", () => {
     entranceThemePlaying = true;
     setEntranceMusicUi("playing");
+    dismissEntranceMusicGate();
   }, { once:true });
 
   entranceThemeAudio.addEventListener("ended", () => {
@@ -2354,25 +2355,20 @@ function dismissEntranceMusicGate() {
 }
 
 function startEntranceThemeFromGesture() {
+  // Important for iPhone/Safari: HTMLAudio.play() must run directly inside
+  // the user's tap handler. Waiting for AudioContext.resume() first can make
+  // Safari treat it as no longer user-initiated and block playback.
+  try {
+    playEntranceTheme();
+  } catch (e) {
+    entranceThemeStarted = false;
+  }
+
+  // Resume WebAudio as a secondary step for the roulette sounds.
   try {
     const ctx = getAudioCtx();
-    const start = () => {
-      if (!entranceThemeStarted) playEntranceTheme();
-      dismissEntranceMusicGate();
-    };
-    if (ctx.state === "running") {
-      start();
-    } else {
-      const resumed = ctx.resume();
-      if (resumed && typeof resumed.then === "function") {
-        resumed.then(start).catch(() => dismissEntranceMusicGate());
-      } else {
-        start();
-      }
-    }
-  } catch (e) {
-    dismissEntranceMusicGate();
-  }
+    if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+  } catch (e) {}
 }
 
 function showEntranceMusicGate() {
@@ -2405,15 +2401,10 @@ function showEntranceMusicGate() {
 }
 
 function armEntranceTheme() {
-  // Autoplay is blocked on iPhone/Safari in a fresh session.
-  // Try it for platforms that permit it; otherwise present one clear entry tap.
-  try {
-    playEntranceTheme();
-  } catch (e) {}
-
-  if (!entranceThemeStarted) {
-    showEntranceMusicGate();
-  }
+  // Browsers — especially iPhone/Safari and installed PWAs — block autoplay.
+  // Always show one clear entry tap so playback is guaranteed to be launched
+  // from a real user gesture.
+  showEntranceMusicGate();
 }
 
 

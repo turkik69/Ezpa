@@ -570,7 +570,7 @@
     .bye-note { font-size:10px; }
   }
 </style>
-<link rel="stylesheet" href="theme-v2.css?v=19">
+<link rel="stylesheet" href="theme-v2.css?v=22">
 </head>
 <body>
   <div class="floodlight-glow"></div>
@@ -1910,7 +1910,6 @@ async function pollLoad() {
 }
 
 async function init() {
-  armEntranceTheme();
   await pollLoad();
   loaded = true;
   render();
@@ -2271,143 +2270,6 @@ function getAudioCtx() {
   }
   if (audioCtx.state === "suspended") audioCtx.resume();
   return audioCtx;
-}
-
-
-/* ============ Entrance anthem ============
-   Uses the complete instrumental track supplied for this app.
-   Playback starts only after the member taps the entry button because
-   iPhone/Safari and installed PWAs block unprompted autoplay. */
-let entranceThemeStarted = false;
-let entranceThemePlaying = false;
-let entranceThemeAudio = null;
-const ENTRANCE_THEME_FILE = "audio/oman-anthem-full.mp3?v=21";
-
-function setEntranceMusicUi(state) {
-  let btn = document.getElementById("entranceMusicControl");
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.id = "entranceMusicControl";
-    btn.type = "button";
-    btn.className = "entrance-music-control";
-    btn.onclick = () => stopEntranceTheme(true);
-    document.body.appendChild(btn);
-  }
-  if (state === "playing") {
-    btn.innerHTML = '<span class="entrance-sound-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>إيقاف الصوت</span>';
-    btn.classList.add("show");
-  } else {
-    btn.classList.remove("show");
-  }
-}
-
-function stopEntranceTheme(byUser = false) {
-  entranceThemePlaying = false;
-  if (entranceThemeAudio) {
-    try {
-      entranceThemeAudio.pause();
-      entranceThemeAudio.currentTime = 0;
-    } catch (e) {}
-  }
-  setEntranceMusicUi("stopped");
-}
-
-function entranceThemeFailed() {
-  entranceThemeStarted = false;
-  entranceThemePlaying = false;
-  setEntranceMusicUi("stopped");
-  const gate = document.getElementById("entranceMusicGate");
-  if (gate) {
-    const message = gate.querySelector(".entrance-gate-card > p");
-    const button = gate.querySelector("#entranceGateStartBtn");
-    if (message) message.textContent = "تعذر تشغيل الصوت. اضغط للمحاولة مرة أخرى.";
-    if (button) button.lastChild.textContent = "إعادة تشغيل النشيد";
-  }
-}
-
-function playEntranceTheme() {
-  if (entranceThemeStarted) return;
-
-  entranceThemeStarted = true;
-  entranceThemeAudio = new Audio(ENTRANCE_THEME_FILE);
-  entranceThemeAudio.preload = "auto";
-  entranceThemeAudio.volume = 0.64;
-
-  entranceThemeAudio.addEventListener("playing", () => {
-    entranceThemePlaying = true;
-    setEntranceMusicUi("playing");
-    dismissEntranceMusicGate();
-  }, { once:true });
-
-  entranceThemeAudio.addEventListener("ended", () => {
-    entranceThemePlaying = false;
-    setEntranceMusicUi("stopped");
-  });
-
-  entranceThemeAudio.addEventListener("error", () => {
-    entranceThemeFailed();
-  });
-
-  const p = entranceThemeAudio.play();
-  if (p && typeof p.catch === "function") {
-    p.catch(entranceThemeFailed);
-  }
-}
-
-function dismissEntranceMusicGate() {
-  const gate = document.getElementById("entranceMusicGate");
-  if (!gate) return;
-  gate.classList.add("leaving");
-  setTimeout(() => gate.remove(), 260);
-}
-
-function startEntranceThemeFromGesture() {
-  // Important for iPhone/Safari: HTMLAudio.play() must run directly inside
-  // the user's tap handler. Waiting for AudioContext.resume() first can make
-  // Safari treat it as no longer user-initiated and block playback.
-  try {
-    playEntranceTheme();
-  } catch (e) {
-    entranceThemeFailed();
-  }
-
-  // Resume WebAudio as a secondary step for the roulette sounds.
-  try {
-    const ctx = getAudioCtx();
-    if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
-  } catch (e) {}
-}
-
-function showEntranceMusicGate() {
-  if (entranceThemeStarted || document.getElementById("entranceMusicGate")) return;
-  const gate = document.createElement("div");
-  gate.id = "entranceMusicGate";
-  gate.className = "entrance-music-gate";
-  gate.innerHTML = `
-    <div class="entrance-gate-card">
-      <div class="entrance-gate-emblem"><span class="badge-trophy-3d" aria-hidden="true"></span></div>
-      <small>دوري أبطال العزبة</small>
-      <strong>أهلاً بك</strong>
-      <p>اضغط للدخول وتشغيل النشيد السلطاني كاملاً.</p>
-      <button type="button" id="entranceGateStartBtn">
-        <span class="entrance-play-icon" aria-hidden="true"></span>
-        دخول التطبيق
-      </button>
-    </div>
-  `;
-  document.body.appendChild(gate);
-  const btn = gate.querySelector("#entranceGateStartBtn");
-  if (btn) {
-    // The click itself is the required user gesture on iPhone/Safari.
-    btn.addEventListener("click", startEntranceThemeFromGesture);
-  }
-}
-
-function armEntranceTheme() {
-  // Browsers — especially iPhone/Safari and installed PWAs — block autoplay.
-  // Always show one clear entry tap so playback is guaranteed to be launched
-  // from a real user gesture.
-  showEntranceMusicGate();
 }
 
 

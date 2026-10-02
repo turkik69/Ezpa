@@ -1026,13 +1026,19 @@ function shuffle(arr) {
   return a;
 }
 
-// A seeded runner-up has a reserved seat in group two. Every other member
-// stays in the wheel until their own spin stops on their name.
+// Draw the first group on the wheel. Once it fills, the seeded runner-up
+// (if present) and all names still on the wheel enter group two automatically.
 function foldRemainingIntoGroupTwo(wheelOrder, remaining, seededRunnerUp, halfSize) {
-  if (wheelOrder.length < halfSize || !seededRunnerUp) {
+  if (wheelOrder.length < halfSize) {
     return { wheelOrder, remaining, seededRunnerUp };
   }
-  return { wheelOrder: [...wheelOrder, seededRunnerUp], remaining, seededRunnerUp: null };
+  return {
+    wheelOrder: seededRunnerUp
+      ? [...wheelOrder, seededRunnerUp, ...remaining]
+      : [...wheelOrder, ...remaining],
+    remaining: [],
+    seededRunnerUp: null,
+  };
 }
 
 // Builds a full round-robin schedule using the standard "circle method",
@@ -2033,8 +2039,8 @@ function startNewTournament() {
   const initialWheelOrder = seededChampion ? [seededChampion] : [];
   const initialRemaining = groupMode === "two" ? shuffle(wheelPool) : [];
 
-  // If the seeded champion already fills group one, seat the seeded
-  // runner-up in group two now. The rest still spin one by one.
+  // If the seeded champion already fills group one, place the
+  // runner-up and all remaining names in group two immediately.
   const folded = groupMode === "two"
     ? foldRemainingIntoGroupTwo(initialWheelOrder, initialRemaining, seededRunnerUp, halfSize)
     : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
@@ -2468,7 +2474,7 @@ function spinWheel() {
 
     // Only clear the "spinning" flag once the new state is actually saved.
     // A background poll must not restore the old pool while this
-    // individual selection is being saved.
+    // selection and the automatic group-two placement are being saved.
     await updateCurrent({ wheelOrder: folded.wheelOrder, remaining: folded.remaining, seededRunnerUp: folded.seededRunnerUp });
     wheelUi.spinning = false;
     render();
@@ -3324,7 +3330,7 @@ function wheelStageHtml() {
 
   const groupAHtml = groupA.length === 0 ? `<div class="draw-empty-slot">بانتظار أول اسم</div>`
     : groupA.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
-  const groupBHtml = groupB.length === 0 ? `<div class="draw-empty-slot">تبدأ بعد اكتمال المجموعة الأولى</div>`
+  const groupBHtml = groupB.length === 0 ? `<div class="draw-empty-slot">بانتظار اكتمال المجموعة الأولى</div>`
     : groupB.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
 
   const lastWinnerCard = wheelUi.lastWinner && !wheelUi.spinning
@@ -3342,7 +3348,7 @@ function wheelStageHtml() {
       <div>
         <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
         <div class="section-icon-title"><span class="icon ui-icon ui-wheel" aria-hidden="true"></span>القرعة الدوارة</div>
-        <p class="hint wheel-page-hint">توقف العجلة على كل اسم ليُضاف إلى مجموعته. تبدأ المجموعة الثانية بعد اكتمال الأولى.</p>
+        <p class="hint wheel-page-hint">اسحب أسماء المجموعة الأولى بالقرعة؛ وعند اكتمالها تنتقل الأسماء المتبقية تلقائياً إلى المجموعة الثانية.</p>
       </div>
       <div class="draw-progress-orb" style="--draw-progress:${progress}">
         <strong>${progress}%</strong>

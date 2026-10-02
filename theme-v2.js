@@ -103,6 +103,127 @@
   }
 
   // -----------------------------------------------------------------------
+  // iPhone / installed-PWA stability layer
+  // -----------------------------------------------------------------------
+  // iOS WebKit can occasionally lose hit-testing or blank part of a page when
+  // sticky/fixed layers, backdrop-filter and the dynamic viewport are combined.
+  // The app uses all three heavily, so keep the visual identity while removing
+  // only the compositor patterns that are risky on iPhone/iPad.
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+  function installIOSStabilityStyles() {
+    if (!isIOS) return;
+    document.documentElement.classList.add('ezba-ios-stable');
+    if (document.getElementById('ezbaIOSStabilityStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'ezbaIOSStabilityStyle';
+    style.textContent = `
+      html.ezba-ios-stable{height:100%;overflow:hidden!important;background:#07111f!important}
+      html.ezba-ios-stable body{
+        height:100dvh!important;min-height:100dvh!important;max-height:none!important;
+        overflow-y:auto!important;overflow-x:hidden!important;position:relative!important;
+        -webkit-overflow-scrolling:touch!important;overscroll-behavior-y:contain!important;
+        touch-action:pan-y!important;
+      }
+      html.ezba-ios-stable #app{
+        width:100%!important;min-height:100%!important;height:auto!important;max-height:none!important;
+        overflow:visible!important;contain:none!important;transform:none!important;isolation:auto!important;
+      }
+      html.ezba-ios-stable .topbar,
+      html.ezba-ios-stable .tab-row,
+      html.ezba-ios-stable .card,
+      html.ezba-ios-stable .sidebar-card,
+      html.ezba-ios-stable .modal-overlay{
+        backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+      }
+      html.ezba-ios-stable .topbar{background:#0b1830!important;transform:none!important}
+      html.ezba-ios-stable .tab-row{
+        position:relative!important;top:auto!important;background:#0b1830!important;transform:none!important;
+      }
+      html.ezba-ios-stable .card,
+      html.ezba-ios-stable .sidebar-card{
+        background:linear-gradient(155deg,#162a48,#0a172b)!important;
+        transform:none!important;will-change:auto!important;
+      }
+      html.ezba-ios-stable body::before{
+        position:absolute!important;will-change:auto!important;
+      }
+      html.ezba-ios-stable .floodlight-glow{
+        position:absolute!important;filter:none!important;will-change:auto!important;
+      }
+      html.ezba-ios-stable .modal-overlay,
+      html.ezba-ios-stable .celebration-overlay{
+        touch-action:pan-y!important;overscroll-behavior:contain!important;will-change:auto!important;
+      }
+      html.ezba-ios-stable button,
+      html.ezba-ios-stable a,
+      html.ezba-ios-stable input,
+      html.ezba-ios-stable select,
+      html.ezba-ios-stable textarea,
+      html.ezba-ios-stable label{
+        touch-action:manipulation!important;
+      }
+      html.ezba-ios-stable .card::before,
+      html.ezba-ios-stable .card::after,
+      html.ezba-ios-stable .sidebar-card::before{pointer-events:none!important}
+      @media (display-mode:standalone){
+        html.ezba-ios-stable body{height:100dvh!important;min-height:100dvh!important}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  let viewportRecoveryQueued = false;
+  function recoverIOSViewport() {
+    if (!isIOS || viewportRecoveryQueued) return;
+    viewportRecoveryQueued = true;
+    requestAnimationFrame(() => {
+      viewportRecoveryQueued = false;
+      const body = document.body;
+      const app = document.getElementById('app');
+      if (!body || !app) return;
+
+      const viewportHeight = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight || 0);
+      if (viewportHeight > 0) document.documentElement.style.setProperty('--ezba-visible-vh', viewportHeight + 'px');
+
+      // Reassert the scroll/hit-test state after returning from the background,
+      // rotating the phone, dismissing the keyboard, or resizing Safari chrome.
+      body.style.overflowY = 'auto';
+      body.style.overflowX = 'hidden';
+      body.style.touchAction = 'pan-y';
+      body.style.pointerEvents = 'auto';
+      app.style.pointerEvents = 'auto';
+
+      const maxScroll = Math.max(0, body.scrollHeight - body.clientHeight);
+      if (body.scrollTop > maxScroll) body.scrollTop = maxScroll;
+      if (body.scrollTop < 0) body.scrollTop = 0;
+
+      // A layout read followed by a harmless class pulse forces WebKit to
+      // refresh its compositor/hit-test map without rebuilding the app DOM.
+      void app.offsetHeight;
+      app.classList.add('ezba-viewport-recover');
+      requestAnimationFrame(() => app.classList.remove('ezba-viewport-recover'));
+    });
+  }
+
+  installIOSStabilityStyles();
+  if (isIOS) {
+    window.addEventListener('pageshow', recoverIOSViewport, { passive:true });
+    window.addEventListener('orientationchange', () => setTimeout(recoverIOSViewport, 120), { passive:true });
+    window.addEventListener('resize', recoverIOSViewport, { passive:true });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) setTimeout(recoverIOSViewport, 50);
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', recoverIOSViewport, { passive:true });
+      window.visualViewport.addEventListener('scroll', recoverIOSViewport, { passive:true });
+    }
+    if (isStandalone) setTimeout(recoverIOSViewport, 0);
+  }
+
+  // -----------------------------------------------------------------------
   // Live-sync reliability layer
   // -----------------------------------------------------------------------
 
@@ -166,6 +287,7 @@
           document.documentElement.scrollTop = bodyScroll;
         });
       }
+      if (isIOS) recoverIOSViewport();
     };
   }
 
@@ -217,8 +339,6 @@
     } catch (e) {
       console.error(e);
       syncBadge.textContent = 'تعذر حفظ النتيجة، حاول مرة ثانية';
-      // Pull the server truth back immediately so this device never remains
-      // on a result that failed to persist.
       try {
         const latest = await fetchState();
         if (latest) appState = latest;
@@ -266,6 +386,7 @@
   const start = () => {
     apply();
     observer.observe(document.getElementById('app') || document.body,{childList:true,subtree:true});
+    if (isIOS) recoverIOSViewport();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();

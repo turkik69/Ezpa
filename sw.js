@@ -10,6 +10,16 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// The reliability layer changes more often than the rest of the UI. Always
+// ask the network for it so an installed PWA does not stay stuck on an older
+// cached sync implementation just because the query-string version is the same.
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (url.pathname.endsWith("/theme-v2.js")) {
+    event.respondWith(fetch(new Request(event.request, { cache: "no-store" })));
+  }
+});
+
 function notificationTag(data) {
   const text = `${data.title || ""}|${data.body || ""}`;
   let hash = 2166136261;

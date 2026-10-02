@@ -1,4 +1,4 @@
-/* Ezba UI v2 enhancer — visual semantics only. No business logic changes. */
+/* Ezba UI v2 enhancer — visuals + reliability guards for the live shared app. */
 (() => {
   const icon = (name) => {
     const icons = {
@@ -13,17 +13,16 @@
   function detectView() {
     const active = document.querySelector('.tab-btn.active');
     const text = (active?.textContent || '').trim();
-    let view = 'members';
-    if (text.includes('البطولة')) view = 'tournament';
-    else if (text.includes('التصنيفات')) view = 'stats';
-    else if (text.includes('ودية')) view = 'friendly';
-    else if (document.querySelector('.card .add-member-label') && !active) view = 'profile';
-    document.body.dataset.ezbaView = view;
+    let detected = 'members';
+    if (text.includes('البطولة')) detected = 'tournament';
+    else if (text.includes('التصنيفات')) detected = 'stats';
+    else if (text.includes('ودية')) detected = 'friendly';
+    else if (document.querySelector('.profile-page-card') && !active) detected = 'profile';
+    document.body.dataset.ezbaView = detected;
   }
 
   function enhanceTabs() {
-    // Icons are now rendered purely with CSS masks so every render is stable.
-    // Keeping this no-op avoids a second DOM mutation/layout pass.
+    // Icons are rendered with CSS masks; keep this DOM pass mutation-free.
   }
 
   const cleanedLogoCache = new Map();
@@ -31,9 +30,6 @@
   function cleanClubLogo(img) {
     if (!img || img.dataset.cleanedLogo === '1') return;
 
-    // Al Sadd and Al Ain contain genuine white details that touch the raster edge.
-    // Preserve their source pixels exactly; edge flood-fill would otherwise erase
-    // parts of the crest and make the logo look washed-out or incomplete.
     const clubName = (img.dataset.club || '').trim();
     if (clubName === 'السد' || clubName === 'العين') {
       img.dataset.cleanedLogo = '1';
@@ -105,6 +101,153 @@
       cleanClubLogo(img);
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Live-sync reliability layer
+  // -----------------------------------------------------------------------
+
+  // Ignore out-of-order state responses. On slow mobile networks two polling
+  // requests can overlap; without this guard an older response can arrive
+  // after a newer one and visually roll the page backwards for one frame.
+  if (typeof window.fetchState === 'function') {
+    let newestStateStamp = 0;
+    let newestStateData = null;
+    window.fetchState = async function stableFetchState() {
+      const res = await fetch(REST_URL + '?id=eq.' + STATE_ROW_ID + '&select=data,updated_at', {
+        headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY },
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error('fetch failed: ' + res.status);
+      const rows = await res.json();
+      if (!rows.length) return null;
+      const row = rows[0];
+      const stamp = Date.parse(row.updated_at || '') || 0;
+      if (stamp && stamp < newestStateStamp && newestStateData) return newestStateData;
+      if (stamp >= newestStateStamp) {
+        newestStateStamp = stamp;
+        newestStateData = row.data;
+      }
+      return row.data;
+    };
+  }
+
+  // Skip truly identical re-renders and preserve page position across real
+  // live updates. This removes the occasional iPhone/PWA flash caused by a
+  // full DOM rebuild while the user is looking at the fixtures.
+  if (typeof window.render === 'function') {
+    const originalRender = window.render;
+    let lastSignature = '';
+    window.render = function stableRender() {
+      let signature = '';
+      try {
+        signature = JSON.stringify({
+          loaded,
+          view,
+          state: appState,
+          members,
+          wheel: wheelUi,
+          loginModal,
+          profileModal,
+          messageModal,
+          celebration,
+          backupsListState,
+          mode: window.__selectedGroupMode || null,
+          seeding: window.__useSeeding,
+        });
+      } catch (_) {}
+      if (signature && signature === lastSignature) return;
+      lastSignature = signature;
+
+      const bodyScroll = document.body.scrollTop || document.documentElement.scrollTop || 0;
+      originalRender();
+      if (bodyScroll > 0) {
+        requestAnimationFrame(() => {
+          document.body.scrollTop = bodyScroll;
+          document.documentElement.scrollTop = bodyScroll;
+        });
+      }
+    };
+  }
+
+  // Score changes are written through a PostgreSQL RPC that locks the one
+  // shared league-state row and patches only the requested score field.
+  // This prevents two admins/phones saving different matches at nearly the
+  // same time from overwriting each other's results.
+  let scoreWriteChain = Promise.resolve();
+
+  function parseScore(value) {
+    return value === '' ? null : Math.max(0, parseInt(value, 10) || 0);
+  }
+
+  function enqueueScoreWrite(task) {
+    scoreWriteChain = scoreWriteChain.then(task, task);
+    return scoreWriteChain;
+  }
+
+  async function atomicScoreWrite(scope, matchId, field, value) {
+    const tournamentId = appState.current && appState.current.id;
+    if (!tournamentId) return null;
+    pendingWrites++;
+    syncBadge.textContent = 'جارِ حفظ النتيجة...';
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/ezba_patch_current_score', {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: 'Bearer ' + SUPABASE_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          p_tournament_id: tournamentId,
+          p_scope: scope,
+          p_match_id: matchId || '',
+          p_field: field,
+          p_value: parseScore(value),
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new Error('atomic score save failed: ' + res.status + ' ' + detail);
+      }
+      const nextState = await res.json();
+      if (nextState && typeof nextState === 'object') appState = nextState;
+      render();
+      syncBadge.textContent = 'متصل ✓ تم حفظ النتيجة للجميع';
+      return nextState;
+    } catch (e) {
+      console.error(e);
+      syncBadge.textContent = 'تعذر حفظ النتيجة، حاول مرة ثانية';
+      // Pull the server truth back immediately so this device never remains
+      // on a result that failed to persist.
+      try {
+        const latest = await fetchState();
+        if (latest) appState = latest;
+        render();
+      } catch (_) {}
+      return null;
+    } finally {
+      pendingWrites--;
+    }
+  }
+
+  window.updateMatchField = function(which, matchId, field, value) {
+    requirePermission('admin', () => enqueueScoreWrite(() => atomicScoreWrite(which, matchId, field, value)));
+  };
+
+  window.updateSemiField = function(key, field, value) {
+    requirePermission('admin', () => {
+      const matchId = appState.current?.semis?.[key]?.id || '';
+      enqueueScoreWrite(() => atomicScoreWrite('SEMI:' + key, matchId, field, value));
+    });
+  };
+
+  window.updateFinalField = function(field, value) {
+    requirePermission('admin', () => enqueueScoreWrite(() => atomicScoreWrite('FINAL', '', field, value)));
+  };
+
+  window.updateCupField = function(matchId, field, value) {
+    requirePermission('admin', () => enqueueScoreWrite(() => atomicScoreWrite('CUP', matchId, field, value)));
+  };
 
   function apply() {
     detectView();

@@ -258,7 +258,17 @@
   if (typeof window.render === 'function') {
     const originalRender = window.render;
     let lastSignature = '';
+    let lastRenderedView = null;
+    let deferredScoreRender = false;
+    const editingScore = () => document.activeElement?.matches?.('select.score-select');
     window.render = function stableRender() {
+      // iPhone's score picker is native UI. Replacing its <select> while it
+      // is open can leave the picker or page unable to receive further taps.
+      if (editingScore() && view === lastRenderedView &&
+          !loginModal && !profileModal && !messageModal) {
+        deferredScoreRender = true;
+        return;
+      }
       let signature = '';
       try {
         signature = JSON.stringify({
@@ -276,19 +286,25 @@
           seeding: window.__useSeeding,
         });
       } catch (_) {}
-      if (signature && signature === lastSignature) return;
-      lastSignature = signature;
-
-      const bodyScroll = document.body.scrollTop || document.documentElement.scrollTop || 0;
-      originalRender();
-      if (bodyScroll > 0) {
-        requestAnimationFrame(() => {
-          document.body.scrollTop = bodyScroll;
-          document.documentElement.scrollTop = bodyScroll;
-        });
+      if (signature && signature === lastSignature) {
+        deferredScoreRender = false;
+        return;
       }
-      if (isIOS) recoverIOSViewport();
+
+      const bodyScroll = document.body.scrollTop || 0;
+      originalRender();
+      lastSignature = signature;
+      lastRenderedView = view;
+      deferredScoreRender = false;
+      // Restore in the same frame: rAF ran after a blank/clamped frame on iOS.
+      if (bodyScroll > 0) document.body.scrollTop = bodyScroll;
     };
+    document.addEventListener('focusout', (event) => {
+      if (!event.target.matches?.('select.score-select')) return;
+      setTimeout(() => {
+        if (deferredScoreRender && !editingScore()) render();
+      }, 80);
+    }, true);
   }
 
   // Score changes are written through a PostgreSQL RPC that locks the one
@@ -311,9 +327,12 @@
     if (!tournamentId) return null;
     pendingWrites++;
     syncBadge.textContent = 'جارِ حفظ النتيجة...';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/ezba_patch_current_score', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           apikey: SUPABASE_KEY,
           Authorization: 'Bearer ' + SUPABASE_KEY,
@@ -340,12 +359,16 @@
       console.error(e);
       syncBadge.textContent = 'تعذر حفظ النتيجة، حاول مرة ثانية';
       try {
-        const latest = await fetchState();
+        const latest = await Promise.race([
+          fetchState(),
+          new Promise(resolve => setTimeout(() => resolve(null), 5000)),
+        ]);
         if (latest) appState = latest;
         render();
       } catch (_) {}
       return null;
     } finally {
+      clearTimeout(timeout);
       pendingWrites--;
     }
   }

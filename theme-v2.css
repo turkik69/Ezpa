@@ -1830,7 +1830,8 @@ body{
 
 
 /* ===== Professional groups and fixtures page v10 ===== */
-.groups-page-card{overflow:hidden!important}
+.groups-page-card{overflow:visible!important}
+.groups-page-card .score-table-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
 .groups-hero{
   display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding:18px 19px;margin:-3px -2px 15px;border-radius:20px;

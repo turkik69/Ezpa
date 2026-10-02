@@ -1026,21 +1026,13 @@ function shuffle(arr) {
   return a;
 }
 
-// Once group one (the first `halfSize` seats in wheelOrder) is full, there's
-// no reason to keep spinning for the rest: the seeded runner-up (if any)
-// takes the first seat of group two, and everyone still in the wheel's pool
-// is appended after them, completing the draw in one shot.
+// A seeded runner-up has a reserved seat in group two. Every other member
+// stays in the wheel until their own spin stops on their name.
 function foldRemainingIntoGroupTwo(wheelOrder, remaining, seededRunnerUp, halfSize) {
-  if (wheelOrder.length < halfSize) {
-    return { wheelOrder, remaining, seededRunnerUp }; // group one isn't full yet, nothing to do
+  if (wheelOrder.length < halfSize || !seededRunnerUp) {
+    return { wheelOrder, remaining, seededRunnerUp };
   }
-  if (!seededRunnerUp && remaining.length === 0) {
-    return { wheelOrder, remaining, seededRunnerUp }; // already fully resolved
-  }
-  const filled = seededRunnerUp
-    ? [...wheelOrder, seededRunnerUp, ...remaining]
-    : [...wheelOrder, ...remaining];
-  return { wheelOrder: filled, remaining: [], seededRunnerUp: null };
+  return { wheelOrder: [...wheelOrder, seededRunnerUp], remaining, seededRunnerUp: null };
 }
 
 // Builds a full round-robin schedule using the standard "circle method",
@@ -1166,12 +1158,13 @@ function standingsFor(players, matches, tiebreakLog) {
       gfKeysDesc.forEach((gf) => {
         const gfCluster = byGf[gf];
         if (gfCluster.length === 1) { ordered.push(gfCluster[0]); return; }
-        // still tied on points, goal difference, and goals scored -> random draw, resolved pairwise & logged
-        const shuffled = shuffle(gfCluster);
-        if (tiebreakLog && shuffled.length >= 2) {
-          tiebreakLog.push({ id:uid(), names:shuffled.map(s=>s.name), winner:shuffled[0].name, pts, gf });
+        // Keep the live table in draw order while tied. Only the final
+        // qualification decision performs and records a random tiebreak.
+        const tied = tiebreakLog ? shuffle(gfCluster) : gfCluster;
+        if (tiebreakLog && tied.length >= 2) {
+          tiebreakLog.push({ id:uid(), names:tied.map(s=>s.name), winner:tied[0].name, pts, gf });
         }
-        ordered.push(...shuffled);
+        ordered.push(...tied);
       });
     });
   });
@@ -2040,10 +2033,8 @@ function startNewTournament() {
   const initialWheelOrder = seededChampion ? [seededChampion] : [];
   const initialRemaining = groupMode === "two" ? shuffle(wheelPool) : [];
 
-  // Handle the edge case where group one is already "full" the moment the
-  // tournament is created (e.g. only the champion + runner-up confirmed, or
-  // halfSize is 1) — fold the runner-up / pool in immediately rather than
-  // waiting for a spin that would never meaningfully happen.
+  // If the seeded champion already fills group one, seat the seeded
+  // runner-up in group two now. The rest still spin one by one.
   const folded = groupMode === "two"
     ? foldRemainingIntoGroupTwo(initialWheelOrder, initialRemaining, seededRunnerUp, halfSize)
     : { wheelOrder: initialWheelOrder, remaining: initialRemaining, seededRunnerUp };
@@ -2476,10 +2467,8 @@ function spinWheel() {
     const folded = foldRemainingIntoGroupTwo(orderWithWinner, remainingAfterWinner, cur.seededRunnerUp || null, halfSize);
 
     // Only clear the "spinning" flag once the new state is actually saved.
-    // Otherwise a background poll landing in this exact window can render
-    // the OLD state (still showing leftover players in the wheel) before
-    // this update is persisted, making the wheel look like it needs to
-    // keep spinning for players who were already auto-assigned.
+    // A background poll must not restore the old pool while this
+    // individual selection is being saved.
     await updateCurrent({ wheelOrder: folded.wheelOrder, remaining: folded.remaining, seededRunnerUp: folded.seededRunnerUp });
     wheelUi.spinning = false;
     render();
@@ -2489,6 +2478,7 @@ function spinWheel() {
 
 function proceedToGroups() {
   const cur = appState.current;
+  if (!cur || cur.remaining.length > 0 || cur.wheelOrder.length !== cur.players.length || wheelUi.spinning) return;
   const halfSize = Math.ceil(cur.players.length / 2);
   const gA = cur.wheelOrder.slice(0, halfSize);
   const gB = cur.wheelOrder.slice(halfSize);
@@ -3334,7 +3324,7 @@ function wheelStageHtml() {
 
   const groupAHtml = groupA.length === 0 ? `<div class="draw-empty-slot">بانتظار أول اسم</div>`
     : groupA.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
-  const groupBHtml = groupB.length === 0 ? `<div class="draw-empty-slot">بانتظار اكتمال المجموعة الأولى</div>`
+  const groupBHtml = groupB.length === 0 ? `<div class="draw-empty-slot">تبدأ بعد اكتمال المجموعة الأولى</div>`
     : groupB.map((p,i) => `<div class="group-row draw-player-card"><span class="draw-player-number">${i+1}</span>${playerIdentityHtml(p.name, true)}</div>`).join("");
 
   const lastWinnerCard = wheelUi.lastWinner && !wheelUi.spinning
@@ -3352,7 +3342,7 @@ function wheelStageHtml() {
       <div>
         <div class="tournament-badge"><span class="badge-trophy-3d" aria-hidden="true"></span>${escapeHtml(cur.name)}</div>
         <div class="section-icon-title"><span class="icon ui-icon ui-wheel" aria-hidden="true"></span>القرعة الدوارة</div>
-        <p class="hint wheel-page-hint">اسحب الأسماء بالقرعة حتى تكتمل المجموعة الأولى، وبعدها ينتقل الباقي للمجموعة الثانية تلقائياً.</p>
+        <p class="hint wheel-page-hint">توقف العجلة على كل اسم ليُضاف إلى مجموعته. تبدأ المجموعة الثانية بعد اكتمال الأولى.</p>
       </div>
       <div class="draw-progress-orb" style="--draw-progress:${progress}">
         <strong>${progress}%</strong>
@@ -3538,8 +3528,8 @@ function standingsPanelHtml(title, table, whichKey) {
 
 function groupsStageHtml() {
   const cur = appState.current;
-  const tableA = standingsFor(cur.groupA, cur.matchesA, []);
-  const tableB = standingsFor(cur.groupB, cur.matchesB, []);
+  const tableA = standingsFor(cur.groupA, cur.matchesA, null);
+  const tableB = standingsFor(cur.groupB, cur.matchesB, null);
   const playedA = cur.matchesA.filter(m => m.scoreA != null && m.scoreB != null).length;
   const playedB = cur.matchesB.filter(m => m.scoreA != null && m.scoreB != null).length;
   const totalMatches = cur.matchesA.length + cur.matchesB.length;
@@ -3609,7 +3599,7 @@ function groupsStageHtml() {
 
 function singleGroupStageHtml() {
   const cur = appState.current;
-  const table = standingsFor(cur.players, cur.singleMatches, []);
+  const table = standingsFor(cur.players, cur.singleMatches, null);
   const played = cur.singleMatches.filter(m => m.scoreA != null && m.scoreB != null).length;
   const total = cur.singleMatches.length;
   const progress = total ? Math.round((played / total) * 100) : 0;

@@ -12,11 +12,21 @@ self.addEventListener("activate", (event) => {
 
 // The reliability layer changes more often than the rest of the UI. Always
 // ask the network for it so an installed PWA does not stay stuck on an older
-// cached sync implementation just because the query-string version is the same.
+// cached sync implementation. The qualification-tiebreak extension is loaded
+// immediately after theme-v2.js on every controlled app launch.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.endsWith("/theme-v2.js")) {
-    event.respondWith(fetch(new Request(event.request, { cache: "no-store" })));
+    event.respondWith((async () => {
+      const response = await fetch(new Request(event.request, { cache: "no-store" }));
+      const source = await response.text();
+      const loader = `\n;(() => {\n  if (document.getElementById('ezba-group-tiebreak-loader')) return;\n  const s = document.createElement('script');\n  s.id = 'ezba-group-tiebreak-loader';\n  s.src = 'group-tiebreak-v19.js?v=19';\n  s.defer = false;\n  document.head.appendChild(s);\n})();\n`;
+      return new Response(source + loader, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    })());
   }
 });
 

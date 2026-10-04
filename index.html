@@ -2270,61 +2270,80 @@ function getAudioCtx() {
 }
 
 
+let wheelAudioBus = null;
+function wheelOutput(ctx) {
+  if (!wheelAudioBus || wheelAudioBus.context !== ctx) {
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -16;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 3;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.16;
+    const master = ctx.createGain();
+    master.gain.value = 0.95;
+    compressor.connect(master);
+    master.connect(ctx.destination);
+    wheelAudioBus = { context:ctx, input:compressor };
+  }
+  return wheelAudioBus.input;
+}
+
 function playTick(volume) {
   try {
     const ctx = getAudioCtx();
+    const output = wheelOutput(ctx);
     const t = ctx.currentTime;
-
-    // Short, soft mechanical roulette click instead of the old electronic bell.
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(520 + Math.random() * 55, t);
-    osc.frequency.exponentialRampToValueAtTime(310, t + 0.035);
-    filter.type = "bandpass";
-    filter.frequency.value = 820;
-    filter.Q.value = 0.9;
-    gain.gain.setValueAtTime(Math.max(0.018, volume * 0.56), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.06);
+    const strength = Math.max(0.48, Math.min(1, volume / 0.18));
+    // Two short, bright mechanical strikes remain audible on phone speakers.
+    [880, 1320].forEach((frequency, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i ? "triangle" : "square";
+      osc.frequency.setValueAtTime(frequency, t);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 0.62, t + 0.055);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime((i ? 0.10 : 0.18) * strength, t + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+      osc.connect(gain);
+      gain.connect(output);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    });
   } catch (e) {}
 }
 
 function playLandThud() {
   try {
     const ctx = getAudioCtx();
-    const t = ctx.currentTime;
-
-    // Refined two-part landing: low soft impact + brief bright confirmation chime.
-    const thud = ctx.createOscillator();
-    const thudGain = ctx.createGain();
-    thud.type = "sine";
-    thud.frequency.setValueAtTime(125, t);
-    thud.frequency.exponentialRampToValueAtTime(58, t + 0.20);
-    thudGain.gain.setValueAtTime(0.13, t);
-    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-    thud.connect(thudGain);
-    thudGain.connect(ctx.destination);
-    thud.start(t);
-    thud.stop(t + 0.25);
-
-    [659.25, 987.77].forEach((freq, i) => {
-      const chime = ctx.createOscillator();
-      const chimeGain = ctx.createGain();
-      chime.type = "sine";
-      chime.frequency.value = freq;
-      const start = t + 0.05 + i * 0.035;
-      chimeGain.gain.setValueAtTime(0.055 - i * 0.012, start);
-      chimeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
-      chime.connect(chimeGain);
-      chimeGain.connect(ctx.destination);
-      chime.start(start);
-      chime.stop(start + 0.25);
+    const output = wheelOutput(ctx);
+    const t = ctx.currentTime + 0.01;
+    // A punchy landing, followed by a rising three-note victory cue.
+    [155, 94].forEach((frequency, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i ? "triangle" : "sine";
+      osc.frequency.setValueAtTime(frequency, t);
+      osc.frequency.exponentialRampToValueAtTime(i ? 48 : 60, t + 0.28);
+      gain.gain.setValueAtTime(i ? 0.30 : 0.58, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      osc.connect(gain);
+      gain.connect(output);
+      osc.start(t);
+      osc.stop(t + 0.33);
+    });
+    [523.25, 659.25, 783.99, 1046.50].forEach((frequency, i) => {
+      const start = t + 0.07 + i * 0.115;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(i === 3 ? 0.26 : 0.18, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + (i === 3 ? 0.55 : 0.25));
+      osc.connect(gain);
+      gain.connect(output);
+      osc.start(start);
+      osc.stop(start + (i === 3 ? 0.56 : 0.26));
     });
   } catch (e) {}
 }
@@ -2415,6 +2434,7 @@ function animateWheelSpin(n, winnerIdx, onDone) {
   }
 
   let lastSegmentIndex = Math.floor(((360 - (startRotation % 360)) % 360) / segAngle);
+  let lastTickTime = -Infinity;
   const startTime = performance.now();
 
   function frame(now) {
@@ -2436,7 +2456,10 @@ function animateWheelSpin(n, winnerIdx, onDone) {
     if (segmentIndex !== lastSegmentIndex) {
       lastSegmentIndex = segmentIndex;
       const remainingFraction = 1 - t;
-      playTick(0.05 + 0.13 * remainingFraction); // louder/sharper early, softer as it slows
+      if (now - lastTickTime > 32) {
+        playTick(0.10 + 0.08 * remainingFraction);
+        lastTickTime = now;
+      }
     }
 
     if (t < 1) {
@@ -2457,6 +2480,7 @@ function spinWheel() {
   const remaining = cur.remaining;
   const n = remaining.length;
   if (wheelUi.spinning || n === 0) return;
+  try { getAudioCtx(); } catch (e) {} // Unlock sound on the tap (iOS).
   wheelUi.spinning = true;
   const winnerIdx = Math.floor(Math.random() * n);
   render(); // shows the "spinning" disabled button state; wheel element re-queried below
@@ -2600,6 +2624,7 @@ function spinQualificationWheel() {
   const players = pending.ids.map(id => cur['group' + pending.group].find(p => p.id === id)).filter(Boolean);
   const n = players.length;
   if (n < 2) return;
+  try { getAudioCtx(); } catch (e) {} // Unlock sound on the tap (iOS).
   qualificationSpinning = true;
   wheelUi.spinning = true;
   render();
@@ -2612,12 +2637,16 @@ function spinQualificationWheel() {
   while (delta < 7 * 360) delta += 360;
   const began = performance.now();
   let lastSegment = -1;
+  let lastTickTime = -Infinity;
   function frame(now) {
     const t = Math.min(1, (now - began) / 4200);
     const rotation = start + delta * (1 - Math.pow(1 - t, 3.2));
     if (el && el.isConnected) el.style.transform = 'rotate(' + rotation + 'deg)';
     const segment = Math.floor(((360 - (rotation % 360)) % 360) / (360 / n));
-    if (segment !== lastSegment) { lastSegment = segment; playTick(.05); }
+    if (segment !== lastSegment) {
+      lastSegment = segment;
+      if (now - lastTickTime > 32) { playTick(0.16); lastTickTime = now; }
+    }
     if (t < 1) return requestAnimationFrame(frame);
     qualificationRotation = start + delta;
     playLandThud();

@@ -2508,15 +2508,143 @@ function doUpdateMatchField(which, matchId, field, value) {
   const list = cur[key];
   const parsed = value === "" ? null : Math.max(0, parseInt(value) || 0);
   notifyIfFreshDemolition(list.find(m => m.id === matchId), field, parsed);
+  if (qualificationSpinning) return;
   const updated = list.map(m => m.id === matchId ? { ...m, [field]: parsed } : m);
-  updateCurrent({ [key]: updated });
+  updateCurrent({ [key]: updated, ...(which === 'A' || which === 'B' ? { qualificationDraws:[], qualificationPending:null } : {}) });
 }
 
+
+// Resolve a two-team tie at the qualifying line only after their direct games.
+function groupRank(cur, group) {
+  const matches = cur['matches' + group];
+  const table = standingsFor(cur['group' + group], matches, null);
+  const saved = (cur.qualificationDraws || []).filter(d => d.group === group);
+  for (let i = 0; i < table.length - 1; i++) {
+    const a = table[i], b = table[i + 1];
+    if (a.pts !== b.pts || a.gd !== b.gd || a.gf !== b.gf) continue;
+    // A larger tied cluster uses the wheel for every qualifying seat in turn.
+    const cluster = table.filter(t => t.pts === a.pts && t.gd === a.gd && t.gf === a.gf);
+    if (cluster.length !== 2) continue;
+    const direct = matches.filter(m => (m.a.id === a.id && m.b.id === b.id) ||
+      (m.a.id === b.id && m.b.id === a.id));
+    let pa = 0, pb = 0, ga = 0, gb = 0;
+    direct.forEach(m => {
+      if (m.scoreA == null || m.scoreB == null) return;
+      const x = m.a.id === a.id ? m.scoreA : m.scoreB;
+      const y = m.a.id === a.id ? m.scoreB : m.scoreA;
+      ga += x; gb += y;
+      if (x > y) pa += 3;
+      else if (x < y) pb += 3;
+      else { pa++; pb++; }
+    });
+    if (pb > pa || (pa === pb && gb > ga)) table.splice(i, 2, b, a);
+  }
+  saved.forEach(d => {
+    const winnerAt = table.findIndex(p => p.id === d.winnerId);
+    if (winnerAt < 0) return;
+    const first = Math.min(...d.ids.map(id => table.findIndex(p => p.id === id)));
+    if (first >= 0 && winnerAt > first) table.splice(first, 0, table.splice(winnerAt, 1)[0]);
+  });
+  // Find a tied block which straddles the boundary between 2nd and 3rd.
+  if (table.length > 2) {
+    const second = table[1], third = table[2];
+    if (second.pts === third.pts && second.gd === third.gd && second.gf === third.gf) {
+      const cluster = table.filter(t => t.pts === second.pts && t.gd === second.gd && t.gf === second.gf);
+      const priorWinners = saved.map(d => d.winnerId);
+      const unresolved = cluster.filter(t => !priorWinners.includes(t.id));
+      const pair = unresolved.length === 2 ? unresolved : null;
+      const direct = pair && matches.filter(m => (m.a.id === pair[0].id && m.b.id === pair[1].id) ||
+        (m.a.id === pair[1].id && m.b.id === pair[0].id));
+      const drawnDirect = direct && direct.every(m => m.scoreA === m.scoreB);
+      if (unresolved.length > 1 && (cluster.length > 2 || drawnDirect)) {
+        return { table, pending:{ group, ids:unresolved.map(t => t.id) } };
+      }
+    }
+  }
+  return { table, pending:null };
+}
+let qualificationSpinning = false;
+let qualificationRotation = 0;
+function qualificationWheelHtml(cur) {
+  const pending = cur.qualificationPending;
+  if (!pending) return '';
+  const players = pending.ids.map(id => cur['group' + pending.group].find(p => p.id === id)).filter(Boolean);
+  if (players.length < 2) return '';
+  const n = players.length;
+  const colors = ['#F7D36B','#2E5C99','#CF4650','#34B98A'];
+  const labels = players.map((p,i) => {
+    const angle = (i + .5) * 360 / n;
+    return '<div class="wheel-label" style="transform:rotate(' + angle + 'deg) translate(0,-122px) rotate(-' + angle + 'deg)">' +
+      escapeHtml(p.name) + '</div>';
+  }).join('');
+  return '<div class="wheel-area broadcast-wheel premium-wheel-arena" style="margin-top:18px">' +
+    '<div class="wheel-live-strip"><span class="live-dot"></span><span>قرعة حسم التأهل · المجموعة ' + pending.group + '</span></div>' +
+    '<p class="hint" style="text-align:center;padding:14px">تساوى المتنافسون في النقاط وفارق الأهداف والأهداف المسجلة والمواجهة المباشرة. الفائز بالعجلة يتأهل.</p>' +
+    '<div class="wheel-stage"><div class="wheel-stage-ring"></div><div class="wheel-wrap"><div class="pointer"></div>' +
+    '<div class="wheel" id="qualificationWheel" style="transform:rotate(' + qualificationRotation + 'deg);background:' +
+    conicGradient(n,colors) + '">' + labels + '</div><div class="wheel-hub"><span class="wheel-ball-icon"></span><small>DRAW</small></div></div></div>' +
+    '<div class="spin-control-zone"><button class="spin-btn premium-spin-btn" ' + (qualificationSpinning ? 'disabled' : '') +
+    ' onclick="spinQualificationWheel()">' + (qualificationSpinning ? 'جاري الدوران...' : 'ابدأ قرعة التأهل') + '</button></div></div>';
+}
 function doGoToKnockout() {
   const cur = appState.current;
-  const logA = [], logB = [];
-  const finalTableA = standingsFor(cur.groupA, cur.matchesA, logA);
-  const finalTableB = standingsFor(cur.groupB, cur.matchesB, logB);
+  if (!cur || cur.stage !== 'groups' || cur.qualificationPending || qualificationSpinning ||
+    [...cur.matchesA, ...cur.matchesB].some(m => m.scoreA == null || m.scoreB == null)) return;
+  const pending = groupRank(cur, 'A').pending || groupRank(cur, 'B').pending;
+  if (pending) updateCurrent({ qualificationPending:pending });
+  else finishGroupsKnockout();
+}
+function spinQualificationWheel() {
+  const cur = appState.current, pending = cur && cur.qualificationPending;
+  if (!pending || qualificationSpinning || cur.stage !== 'groups') return;
+  const players = pending.ids.map(id => cur['group' + pending.group].find(p => p.id === id)).filter(Boolean);
+  const n = players.length;
+  if (n < 2) return;
+  qualificationSpinning = true;
+  wheelUi.spinning = true;
+  render();
+  const el = document.getElementById('qualificationWheel');
+  const winnerIdx = Math.floor(Math.random() * n);
+  const center = (winnerIdx + .5) * 360 / n;
+  const start = qualificationRotation;
+  const norm = ((start % 360) + 360) % 360;
+  let delta = 7 * 360 + 360 - center - norm;
+  while (delta < 7 * 360) delta += 360;
+  const began = performance.now();
+  let lastSegment = -1;
+  function frame(now) {
+    const t = Math.min(1, (now - began) / 4200);
+    const rotation = start + delta * (1 - Math.pow(1 - t, 3.2));
+    if (el && el.isConnected) el.style.transform = 'rotate(' + rotation + 'deg)';
+    const segment = Math.floor(((360 - (rotation % 360)) % 360) / (360 / n));
+    if (segment !== lastSegment) { lastSegment = segment; playTick(.05); }
+    if (t < 1) return requestAnimationFrame(frame);
+    qualificationRotation = start + delta;
+    playLandThud();
+    const winner = players[winnerIdx];
+    const draw = { id:uid(), group:pending.group, ids:pending.ids, names:players.map(p => p.name),
+      winnerId:winner.id, winner:winner.name };
+    const draws = [...(cur.qualificationDraws || []), draw];
+    const nextCur = { ...cur, qualificationDraws:draws, qualificationPending:null };
+    const nextPending = groupRank(nextCur, 'A').pending || groupRank(nextCur, 'B').pending;
+    updateCurrent({ qualificationDraws:draws, qualificationPending:nextPending }).then(() => {
+      qualificationSpinning = false;
+      wheelUi.spinning = false;
+      if (!nextPending) finishGroupsKnockout();
+      else render();
+    }).catch(e => {
+      console.error(e);
+      qualificationSpinning = false;
+      wheelUi.spinning = false;
+      render();
+    });
+  }
+  requestAnimationFrame(frame);
+}
+function finishGroupsKnockout() {
+  const cur = appState.current;
+  const finalTableA = groupRank(cur, 'A').table;
+  const finalTableB = groupRank(cur, 'B').table;
   const a1 = finalTableA[0], a2 = finalTableA[1];
   const b1 = finalTableB[0], b2 = finalTableB[1];
   const promotedNames = [a1?.name, a2?.name, b1?.name, b2?.name].filter(Boolean);
@@ -2526,7 +2654,8 @@ function doGoToKnockout() {
       m1: { id:uid(), label:"نصف النهائي 1", a:a1, b:b2, scoreA:null, scoreB:null, penA:null, penB:null },
       m2: { id:uid(), label:"نصف النهائي 2", a:b1, b:a2, scoreA:null, scoreB:null, penA:null, penB:null },
     },
-    tiebreakLog: [...(cur.tiebreakLog || []), ...logA, ...logB],
+    tiebreakLog: [...(cur.tiebreakLog || []), ...(cur.qualificationDraws || []).map(d => ({ id:d.id, names:d.names, winner:d.winner, group:d.group }))],
+    qualificationPending: null,
     fullStandings: [...finalTableA, ...finalTableB],
     promotedNames,
     // Explicit per-group split (rather than relying on promotedNames' array
@@ -3534,8 +3663,8 @@ function standingsPanelHtml(title, table, whichKey) {
 
 function groupsStageHtml() {
   const cur = appState.current;
-  const tableA = standingsFor(cur.groupA, cur.matchesA, null);
-  const tableB = standingsFor(cur.groupB, cur.matchesB, null);
+  const tableA = groupRank(cur, 'A').table;
+  const tableB = groupRank(cur, 'B').table;
   const playedA = cur.matchesA.filter(m => m.scoreA != null && m.scoreB != null).length;
   const playedB = cur.matchesB.filter(m => m.scoreA != null && m.scoreB != null).length;
   const totalMatches = cur.matchesA.length + cur.matchesB.length;
@@ -3578,7 +3707,7 @@ function groupsStageHtml() {
 
     <div class="groups-rule-strip">
       <span class="groups-rule-icon">i</span>
-      <span>ترتيب الصعود: النقاط ← الأهداف المسجلة ← قرعة عشوائية عند التعادل التام.</span>
+      <span>ترتيب الصعود: النقاط ← فارق الأهداف ← الأهداف المسجلة ← المواجهة المباشرة ← عجلة القرعة عند تعادل مقعد التأهل.</span>
     </div>
 
     <div class="two-col premium-groups-grid">
@@ -3596,10 +3725,11 @@ function groupsStageHtml() {
         <strong>${allPlayed?'اكتملت مرحلة المجموعات':'المرحلة التالية مقفلة مؤقتاً'}</strong>
         <span>${allPlayed?'أصبح ترتيب المجموعتين نهائيًا ويمكن الانتقال إلى نصف النهائي.':`تبقّى ${Math.max(0,totalMatches-playedMatches)} مباراة لإكمال دور المجموعات.`}</span>
       </div>
-      <button class="cta-btn groups-next-btn" ${!allPlayed ? "disabled" : ""} onclick="goToKnockout()">
+      <button class="cta-btn groups-next-btn" ${!allPlayed || cur.qualificationPending ? "disabled" : ""} onclick="goToKnockout()">
         <span class="next-stage-icon"></span>الانتقال لنصف النهائي
       </button>
     </div>
+    ${qualificationWheelHtml(cur)}
   </div>`;
 }
 
@@ -4620,6 +4750,7 @@ window.spinWheel = spinWheel; // available to everyone, no login required
 window.proceedToGroups = proceedToGroups; // continuation of the open wheel step, available to everyone
 window.updateMatchField = function(which, matchId, field, value) { requirePermission("admin", () => doUpdateMatchField(which, matchId, field, value)); };
 window.goToKnockout = function() { requirePermission("admin", doGoToKnockout); };
+window.spinQualificationWheel = function() { requirePermission("admin", spinQualificationWheel); };
 window.goToKnockoutFromSingle = function() { requirePermission("admin", doGoToKnockoutFromSingle); };
 window.goToFinalDirectlyFromSingle = function() { requirePermission("admin", doGoToFinalDirectlyFromSingle); };
 window.updateCupField = function(matchId, field, value) { requirePermission("admin", () => doUpdateCupField(matchId, field, value)); };

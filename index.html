@@ -1884,7 +1884,7 @@ window.testPushForThisDevice = async function() {
   if (profileModal) { profileModal.error = ""; profileModal.success = ""; }
   render();
   try {
-    const result = await sendPushNotificationOrThrow("🔔 اختبار إشعارات Ezpa", "إذا ظهر هذا الإشعار، فالإرسال يعمل على جهازك.", [user.id]);
+    const result = await sendPushNotificationOrThrow("🔔 اختبار إشعارات Ezpa", "اختبار الإرسال لحسابك: " + new Date().toLocaleTimeString("ar"), [user.id]);
     if (profileModal) {
       if (result.sent > 0) profileModal.success = "قبلت خدمة الإرسال الاختبار لـ " + result.sent + " جهاز. تحقق من ظهور الإشعار.";
       else profileModal.error = result.total === 0
@@ -4507,7 +4507,7 @@ function profilePageHtml() {
   } else if (permState === "granted" && pushDeviceStatus === "active") {
     notifSectionHtml = `
       <div class="profile-setting-status success"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>هذا الجهاز مسجّل للإشعارات</div>
-      <button class="profile-secondary-btn" ${pushTestSending ? "disabled" : ""} onclick="testPushForThisDevice()">${pushTestSending ? "جارِ اختبار الإرسال..." : "اختبار الإشعارات على جهازي"}</button>
+      <button class="profile-secondary-btn" ${pushTestSending ? "disabled" : ""} onclick="testPushForThisDevice()">${pushTestSending ? "جارِ اختبار الإرسال..." : "اختبار إشعارات حسابي"}</button>
       <button class="profile-secondary-btn danger-soft" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
   } else if (permState === "granted" && pushDeviceStatus === "checking") {
     notifSectionHtml = `<div class="profile-setting-status neutral">جارِ التحقق من تسجيل الجهاز للإشعارات...</div>`;
@@ -4913,6 +4913,6 @@ document.addEventListener("touchmove", (e) => {
 
 init();
 </script>
-<script src="theme-v2.js?v=20"></script>
+<script src="theme-v2.js?v=21"></script>
 </body>
 </html>

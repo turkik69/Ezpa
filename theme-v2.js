@@ -279,6 +279,8 @@
           wheel: wheelUi,
           loginModal,
           profileModal,
+          pushDeviceStatus,
+          pushTestSending,
           messageModal,
           celebration,
           backupsListState,

@@ -883,6 +883,50 @@ function notificationPermissionState() {
   return Notification.permission;
 }
 
+let pushDeviceStatus = "checking"; // checking | active | missing | error
+let pushTestSending = false;
+let pushStatusCheck = 0;
+
+async function storedPushSubscription(subscription, memberId) {
+  const info = subscription.toJSON();
+  const url = PUSH_SUB_URL + "?select=id,member_id,p256dh,auth&endpoint=eq." +
+    encodeURIComponent(info.endpoint) + "&limit=1";
+  const res = await fetch(url, {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("subscription lookup failed: " + res.status);
+  const rows = await res.json();
+  const row = rows[0];
+  return {
+    exists: !!row,
+    matches: !!row && row.member_id === memberId &&
+      row.p256dh === info.keys?.p256dh && row.auth === info.keys?.auth,
+  };
+}
+
+async function refreshPushDeviceStatus() {
+  const check = ++pushStatusCheck;
+  const user = getCurrentUser();
+  pushDeviceStatus = "checking";
+  if (view === "profile" && profileModal) render();
+  try {
+    if (!user || notificationPermissionState() !== "granted" ||
+        !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      pushDeviceStatus = "missing";
+    } else {
+      const reg = await registerServiceWorker();
+      const subscription = reg && await reg.pushManager.getSubscription();
+      pushDeviceStatus = subscription && (await storedPushSubscription(subscription, user.id)).matches
+        ? "active" : "missing";
+    }
+  } catch (e) {
+    console.error("push status check failed", e);
+    pushDeviceStatus = "error";
+  }
+  if (check === pushStatusCheck && view === "profile" && profileModal) render();
+}
+
 async function subscribeCurrentUserToPush() {
   const user = getCurrentUser();
   if (!user) return { ok: false, reason: "not-logged-in" };
@@ -930,21 +974,29 @@ async function subscribeCurrentUserToPush() {
     auth: subJson.keys.auth,
   };
 
-  // upsert by endpoint (a device re-subscribing gets the same endpoint)
+  // The endpoint is unique. A fresh id with a repeated endpoint would produce
+  // HTTP 409, so first check whether this device is already correctly saved.
   try {
+    const existing = await storedPushSubscription(subscription, user.id);
+    if (existing.matches) return { ok: true };
+    if (existing.exists) {
+      const remove = await fetch(PUSH_SUB_URL + "?endpoint=eq." + encodeURIComponent(record.endpoint), {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+      });
+      if (!remove.ok) throw new Error("replace old subscription failed: " + remove.status);
+    }
     const res = await fetch(PUSH_SUB_URL, {
       method: "POST",
       headers: {
         apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
-        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+        "Content-Type": "application/json", Prefer: "return=minimal",
       },
       body: JSON.stringify(record),
     });
-    if (!res.ok) {
-      const t = await res.text();
-      console.error("failed to save push subscription", t);
-      return { ok: false, reason: "save-failed", detail: t };
-    }
+    if (!res.ok) throw new Error("save push subscription failed: " + res.status + " " + await res.text());
+    if (!(await storedPushSubscription(subscription, user.id)).matches)
+      throw new Error("saved subscription could not be verified");
   } catch (e) {
     console.error("failed to save push subscription", e);
     return { ok: false, reason: "save-failed", detail: String(e) };
@@ -973,7 +1025,7 @@ async function unsubscribeCurrentUserFromPush() {
 // memberIds omitted/empty means "everyone with a subscription".
 async function sendPushNotification(title, body, memberIds) {
   try {
-    await fetch(PUSH_FUNCTION_URL, {
+    const res = await fetch(PUSH_FUNCTION_URL, {
       method: "POST",
       headers: {
         apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
@@ -981,6 +1033,12 @@ async function sendPushNotification(title, body, memberIds) {
       },
       body: JSON.stringify({ title, body, memberIds: memberIds || null, url: "./index.html" }),
     });
+    if (!res.ok) throw new Error("push HTTP " + res.status);
+    const delivery = await res.json();
+    if (delivery.error || delivery.failed > 0 || (delivery.total > 0 && delivery.sent === 0)) {
+      console.error("push delivery was incomplete", { sent: delivery.sent, failed: delivery.failed,
+        total: delivery.total, error: delivery.error, errors: delivery.errors });
+    }
   } catch (e) {
     // notifications are a nice-to-have; never let a failure here break the
     // actual action (confirming attendance, saving a result, etc.)
@@ -1479,6 +1537,7 @@ window.openProfile = function() {
   profileModal = { pin1: "", pin2: "", error: "", success: "", color: null, nickname: null, customizationSuccess: "" };
   view = "profile";
   render();
+  refreshPushDeviceStatus();
 };
 
 window.closeProfile = function() {
@@ -1634,7 +1693,7 @@ window.sendCustomMessage = async function() {
         messageModal.success = "";
         messageModal.error = `تعذر الإرسال لكل الأجهزة (${result.failed} من ${result.total} فشلت).`;
       } else {
-        messageModal.success = `تم الإرسال ✓ وصلت لـ ${result.sent} من ${result.total} جهاز مفعّل`;
+        messageModal.success = `تم قبول الإرسال إلى ${result.sent} من ${result.total} جهاز مسجّل`;
         messageModal.title = "";
         messageModal.body = "";
         messageModal.imageUrl = "";
@@ -1798,7 +1857,8 @@ window.enablePushForThisDevice = async function() {
     result = { ok: false, reason: "unknown", detail: String(e) };
   }
   if (result.ok) {
-    if (profileModal) { profileModal.success = "تم تفعيل الإشعارات على هذا الجهاز ✓"; profileModal.error = ""; }
+    pushDeviceStatus = "active";
+    if (profileModal) { profileModal.success = "تم تسجيل هذا الجهاز للإشعارات ✓"; profileModal.error = ""; }
   } else {
     const messages = {
       "denied": "تم رفض إذن الإشعارات. لازم تسمح للموقع بالإشعارات من إعدادات المتصفح.",
@@ -1817,8 +1877,33 @@ window.enablePushForThisDevice = async function() {
   render();
 };
 
+window.testPushForThisDevice = async function() {
+  const user = getCurrentUser();
+  if (!user || pushTestSending || pushDeviceStatus !== "active") return;
+  pushTestSending = true;
+  if (profileModal) { profileModal.error = ""; profileModal.success = ""; }
+  render();
+  try {
+    const result = await sendPushNotificationOrThrow("🔔 اختبار إشعارات Ezpa", "إذا ظهر هذا الإشعار، فالإرسال يعمل على جهازك.", [user.id]);
+    if (profileModal) {
+      if (result.sent > 0) profileModal.success = "قبلت خدمة الإرسال الاختبار لـ " + result.sent + " جهاز. تحقق من ظهور الإشعار.";
+      else profileModal.error = result.total === 0
+        ? "لم يُعثر على جهاز مسجّل لحسابك. أعد تفعيل الإشعارات."
+        : "فشل إرسال الاختبار. أعد تفعيل الإشعارات ثم جرّب مرة أخرى.";
+    }
+  } catch (e) {
+    console.error("push test failed", e);
+    if (profileModal) profileModal.error = "تعذر اختبار الإشعارات الآن. تحقق من الاتصال وحاول مرة أخرى.";
+  } finally {
+    pushTestSending = false;
+    render();
+  }
+};
+window.refreshPushDeviceStatus = refreshPushDeviceStatus;
+
 window.disablePushForThisDevice = async function() {
   await unsubscribeCurrentUserFromPush();
+  pushDeviceStatus = "missing";
   if (profileModal) { profileModal.success = "تم إيقاف الإشعارات على هذا الجهاز"; profileModal.error = ""; }
   render();
 };
@@ -4419,10 +4504,18 @@ function profilePageHtml() {
   let notifSectionHtml = "";
   if (permState === "unsupported") {
     notifSectionHtml = `<div class="profile-setting-status neutral">الإشعارات غير مدعومة على هذا المتصفح</div>`;
+  } else if (permState === "granted" && pushDeviceStatus === "active") {
+    notifSectionHtml = `
+      <div class="profile-setting-status success"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>هذا الجهاز مسجّل للإشعارات</div>
+      <button class="profile-secondary-btn" ${pushTestSending ? "disabled" : ""} onclick="testPushForThisDevice()">${pushTestSending ? "جارِ اختبار الإرسال..." : "اختبار الإشعارات على جهازي"}</button>
+      <button class="profile-secondary-btn danger-soft" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
+  } else if (permState === "granted" && pushDeviceStatus === "checking") {
+    notifSectionHtml = `<div class="profile-setting-status neutral">جارِ التحقق من تسجيل الجهاز للإشعارات...</div>`;
   } else if (permState === "granted") {
     notifSectionHtml = `
-      <div class="profile-setting-status success"><span class="inline-ui-icon ui-success" aria-hidden="true"></span>الإشعارات مفعّلة على هذا الجهاز</div>
-      <button class="profile-secondary-btn danger-soft" onclick="disablePushForThisDevice()">إيقاف الإشعارات على هذا الجهاز</button>`;
+      <div class="profile-setting-status warning">${pushDeviceStatus === "error" ? "تعذر التحقق من تسجيل الجهاز. تحقق من الاتصال وحاول مجددًا." : "الإذن مسموح، لكن هذا الجهاز غير مسجّل للإشعارات."}</div>
+      <button class="profile-primary-btn" onclick="enablePushForThisDevice()">إصلاح تفعيل الإشعارات</button>
+      <button class="profile-secondary-btn" onclick="refreshPushDeviceStatus()">التحقق مرة أخرى</button>`;
   } else if (permState === "denied") {
     notifSectionHtml = `<div class="profile-setting-status warning">الإشعارات محظورة من إعدادات الجهاز أو المتصفح</div>`;
   } else {
